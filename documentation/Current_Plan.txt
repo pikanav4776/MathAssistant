@@ -1,0 +1,254 @@
+Here’s your **end-to-end execution plan from this point forward**, distilled and ordered so you can just follow it.
+
+---
+
+# MathAssistant — Full Remaining Plan (MVP Completion Path)
+
+## PHASE 1 — Stabilize Core Engine (YOU ARE HERE)
+
+### Goal
+
+Make sure your current FastAPI + SymPy system is **correct, reliable, and testable**
+
+### You do:
+
+1. **Fix and verify parsing**
+
+   * 10–20 hand-written test cases
+   * focus:
+
+     * implicit multiplication (`2x → 2*x`)
+     * parentheses multiplication
+     * exponent parsing
+
+2. **Test normalization + equivalence**
+
+   * ensure:
+
+     * `2(x+3) == 2x+6`
+     * `x + x == 2x`
+
+3. **Test classification logic**
+
+   * confirm:
+
+     * sign errors detected correctly
+     * arithmetic errors detected correctly
+     * distribution errors detected correctly
+
+4. **Frontend sanity test**
+
+   * input → submit → response renders correctly
+   * verify correct vs incorrect UI paths
+
+---
+
+## PHASE 2 — Build Evaluation Dataset (SMALL FIRST)
+
+### Goal
+
+Create a controlled benchmark for your system
+
+### You do:
+
+Start with:
+
+* 10 → 20 algebra problems (NOT 100 yet)
+
+Each includes:
+
+* correct solution step
+* 1–2 common incorrect student steps
+
+Cover:
+
+* distribution errors
+* sign errors
+* arithmetic errors
+
+Example format:
+
+```text id="dataset1"
+Problem: 2(x + 3)
+Correct: 2x + 6
+Wrong: 2x + 3
+Error type: distribution_error
+```
+
+---
+
+## PHASE 3 — Automated Testing Layer
+
+### Goal
+
+Stop manually testing everything
+
+### You do:
+
+Create test suite for:
+
+* parser()
+* normalize()
+* comparison()
+* classify_error()
+* validate()
+
+Run dataset through backend and record:
+
+* correct detection rate
+* misclassification cases
+* parse failures
+
+---
+
+## PHASE 4 — Fix + Improve Core Logic
+
+### Goal
+
+Make engine trustworthy before expanding APIs
+
+You refine:
+
+* error classification rules
+* hint quality
+* edge cases in SymPy handling
+
+You DO NOT add new features yet.
+
+---
+
+## PHASE 5 — Session System (REAL STATE MANAGEMENT)
+
+### Goal
+
+Move from “stateless validator” → “real tutoring session system”
+
+### You implement:
+
+#### `/start-session`
+
+Creates:
+
+* session_id
+* problem assignment
+* attempt counter = 0
+
+#### Session tracking:
+
+* current step
+* history of attempts
+* correctness progression
+
+---
+
+## PHASE 6 — Database Integration (PostgreSQL)
+
+### Goal
+
+Persist everything
+
+You create tables:
+
+* Users
+* Problems
+* Sessions
+* Attempts
+
+Now system can:
+
+* track progress
+* store history
+* support real users
+
+---
+
+## PHASE 7 — Problem Retrieval APIs
+
+Now safe to build:
+
+### `GET /problem/{id}`
+
+* fetch stored problem
+
+### `GET /sample-problem`
+
+* return predefined problem (NOT AI-generated)
+
+---
+
+## PHASE 8 — Full Frontend Integration
+
+You upgrade UI to:
+
+* select problem
+* start session
+* submit step repeatedly
+* display:
+
+  * correctness
+  * hints
+  * error type
+
+Now it feels like a real product.
+
+---
+
+## PHASE 9 — SCALE DATASET (50–100 PROBLEMS)
+
+ONLY AFTER everything above works.
+
+Expand dataset to:
+
+* 50–100 problems
+* multiple error types per problem
+* balanced distribution of mistakes
+
+---
+
+## PHASE 10 — EVALUATION REPORT (IMPORTANT)
+
+You produce measurable results:
+
+* first-error detection accuracy
+* classification accuracy
+* parse success rate
+* hint usefulness (manual rating)
+
+This becomes your **portfolio-grade proof of intelligence system design**
+
+---
+
+## FINAL MVP STATE
+
+At the end, your system should support:
+
+```text
+User selects problem
+→ session created
+→ step submitted
+→ system validates step
+→ detects first error
+→ classifies mistake
+→ generates hint
+→ tracks attempts
+→ reveals solution after limit
+```
+
+---
+
+# Critical Design Principle (KEEP THIS IN MIND)
+
+You are NOT building:
+
+* a chatbot
+* a problem generator
+* a full LMS
+* an AI tutor model
+
+You ARE building:
+
+> a deterministic mathematical step validation and tutoring feedback system
+
+---
+
+If you want next, I can turn this into a **week-by-week execution schedule (like Day 1–Day 14 plan)** so you always know exactly what to code each day.

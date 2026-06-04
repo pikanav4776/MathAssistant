@@ -1,0 +1,107 @@
+Technical Architecture Spec
+
+System Overview:
+	Frontend → API → Parsing → Validation Engine → Hint Engine → Response
+
+Tech Stack:
+	Frontend
+		Next.js
+		Tailwind
+		KaTeX (initially)
+	
+	Backend
+		Python
+		FastAPI
+	
+	Math Engine
+		SymPy
+		
+	Database 
+		PostgreSQL
+		
+System Components
+	
+	Frontend Module
+		input UI
+		step submission
+		rendering math
+		displaying hints
+		
+	API Layer (FastAPI)
+		request routing
+		session management
+		validation endpoints
+	
+	Problem Session Manager
+		track attempts
+		store steps
+		manage state
+
+	Step Parsing Layer
+		convert input → symbolic form
+		normalize expressions
+
+	Step Validation Engine (CORE)
+		compare step transitions
+		detect invalid transformations
+		return error type + location
+		
+	Error Classification Layer
+		categorize mistakes into taxonomy
+
+	Hint Engine
+		generate contextual hints
+		based on:
+			error type
+			equation state
+			attempt history
+			
+	Database Layer
+		schema definition
+		storage of attempts, problems, users
+
+Data Flow
+	user submits step
+	frontend sends API request
+	backend loads session
+	parser converts expression
+	validator checks correctness
+	classifier assigns error type
+	hint engine responds
+	response returned to frontend
+	
+Data Models
+	Users: name, user_id, email, grade?, problem_solve_count, signup_date
+	Problems: type, problem_id, date, time, guess_count
+	Attempts: attempt_id, problem_id, count, success_bool, error_count
+	Sessions: session_id, start_time, end_time, error_count, 
+
+Core Algorithms
+	The application will look at its code and compare it to its training database of existing code to identify problems it was similar to. It will then identify what step this problem is in and solve the baseline problem up to where the user is currently at. If ANY step the user makes is wrong, the application will notably point this out and then give the set of solutions up to this point. It will use the PEMDAS(Parenthesis, Exponents, Multiplication-Division, Addition-Subtraction) series of steps to solve for the requested(or implied) variables, and will subsequently validate it by substituting the derived value of the variable back into the original equation. However, it will only give the next step; rather than revealing the whole problem at once. At the end it will give the answer and/or validate what the user given solution:if it exists works. Additionally, the problem and its correct solution will get uploaded into the training set for future learning.
+	
+Evaluation Framework
+	metrics:
+		first-error accuracy: 100%
+		classification accuracy: 80%
+		hint usefulness: 75%
+		final answer: 80%
+		
+API Design
+	POST /submit-step
+	POST /start-session
+	GET /problem/{id}
+	GET /sample-problem
+	
+Risks & Limitations
+	ambiguous math input
+	symbolic equivalence edge cases
+	over-reliance on LLM reasoning
+	misidentification of problem type
+	wrong answer given via hallucination
+
+Future Extensions
+	OCR pipeline
+	multi-subject expansion
+	adaptive tutoring system
+	example problem demonstration
+	conceptual reclarification

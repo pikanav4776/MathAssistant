@@ -1,0 +1,52 @@
+Product name: MathAssistant
+Version: v0.1 (MVP)
+Date 5/26/2026
+
+Problem Statement
+	While many AI based math applications give students answers to problems they have questions on, these applications do not take deliberate steps to guide students towards the answer so that the student may be able to solve a problem and come to the right answer. Over time, this can create dependence on tools which give answers, which can lead to cases of academic integrity violations and does not faciliate independent thinking skills. This application seeks to address this by guiding students toward the answer instead by providing detailed feedback and hints; rather than full answers.
+	
+Goals:
+	- identify what kind of problem is being given
+	- detect first incorrect algebra step
+	- generate pedagogically useful hints
+	- support step-by-step solving workflow
+	- confirm if a final answer is correct or not
+
+Subsequent Concerns:
+	- no OCR or image processing in the MVP
+	- strictly stick to Algebra problems
+	- don't generate sample problems, solely guide students to solve answers
+	
+Target Users:
+	- high school students (Algebra I–II focus)
+	- SAT prep learners (optional later)
+	- self-study STEM students
+	
+User Journey (Core Flow):
+	- user inputs math problem
+	- submits step
+	- system validates step
+	- system gives feedback/hints
+	- user continues for 3 attempts
+	- solution retrieval
+	
+Core Features:
+	- problem type detection
+	- step input interface
+	- step validation system
+	- error classification
+	- hint generation
+	- attempt tracking
+
+Success Metrics:
+	- Can completely detect what kind of problem the user intends to solve
+	- It generates the correct answer ≥80% of the time.
+	- Correct error classification ≥70%
+	- ALL errors are purely numerical.
+	
+Constraints
+	no OCR
+	limited math domain (algebra only)
+	structured input format required
+	problems can not be excessively complicated(i.e. no systems with more than 5 variables)
+	
