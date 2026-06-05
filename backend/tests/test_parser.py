@@ -2,7 +2,7 @@
 import pytest
 from sympy import simplify
 
-from main import ParseError
+from main import DivisionByZeroError, InvalidFormatError, MalformedSyntaxError, ParseError, UndefinedMathError
 from tests.parser_cases import PARSER_INVALID_CASES, PARSER_VALID_CASES
 
 
@@ -21,5 +21,10 @@ def test_parser_accepts_valid_input(validator, case):
     "case", PARSER_INVALID_CASES, ids=[c["id"] for c in PARSER_INVALID_CASES]
 )
 def test_parser_rejects_invalid_input(validator, case):
-    with pytest.raises(ParseError):
+    expected = {
+        "invalid_format": InvalidFormatError,
+        "division_by_zero": DivisionByZeroError,
+        "undefined_math": UndefinedMathError,
+    }.get(case.get("error_type"), MalformedSyntaxError)
+    with pytest.raises(expected):
         validator.parser(case["expression"])

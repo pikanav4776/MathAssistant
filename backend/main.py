@@ -22,28 +22,60 @@ Data flow (one request):
        │
        ▼
   JSON response
+
+Note: solve(), integrate(), and diff() are not used on the MVP validation path.
 """
 
 from __future__ import annotations
+
+import logging
+import re
+import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Callable, TypeVar
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sympy import (
-    Add, Mul, Pow, Symbol,
-    expand, collect, simplify, sympify, E,
+    Add, E, Mul, Pow,
+    expand, collect, simplify, sympify,
+    zoo, nan, oo,
 )
 from sympy.core.expr import Expr
+from sympy.core.sympify import SympifyError
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+_NORMALIZE_TIMEOUT_SEC = 10.0
+
+MAX_ATTEMPTS_BEFORE_ESCALATION = 3
+MAX_ATTEMPTS_BEFORE_REVEAL = 5
+
+# Pre-parse guards (before SymPy evaluates)
+_DIV_ZERO_PATTERN = re.compile(
+    r"/\s*0(?:\s*[^0-9.]|\s*$)|"
+    r"(?:^|[+\-*/(])\s*0\s*/\s*(?:[^0-9.]|$)"
+)
+_UNDEFINED_TEXT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"log\s*\(\s*0\s*\)", re.I), "logarithm of zero is undefined"),
+    (re.compile(r"0\s*\^\s*0\b"), "0^0 is indeterminate"),
+    (re.compile(r"oo\s*-\s*oo", re.I), "infinity minus infinity is undefined"),
+]
 
 # ──────────────────────────────────────────────────────────────────────────────
 # App bootstrap
 # ──────────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="MathAssistant", version="0.2.0")
+app = FastAPI(title="MathAssistant", version="0.2.1")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", # what do each of these urls(? can we even call them URLs?) mean?
+        "http://localhost:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
@@ -59,8 +91,8 @@ app.add_middleware(
 # ──────────────────────────────────────────────────────────────────────────────
 class StepInput(BaseModel):
     session_id: str
-    step: str       # student's expression, e.g. "2*x + 4" or "x^2 + 5*x + 6"
-    expected: str   # correct expression,  e.g. "2*x + 6" or "x^2 + 5*x + 6"
+    step: str
+    expected: str
 
 
 class StepResult(BaseModel):
@@ -73,60 +105,294 @@ class StepResult(BaseModel):
     hint: str
 
 
+class StartSessionRequest(BaseModel):
+    problem_id: str
+    problem_expression: str
+    expected_final: str
+
+
+class StartSessionResponse(BaseModel):
+    session_id: str
+    problem_id: str
+    problem_expression: str
+    message: str
+
+
+class SessionSummary(BaseModel):
+    session_id: str
+    problem_id: str
+    problem_expression: str
+    attempt_count: int
+    hint_level: int
+    attempt_history: list[dict]
+    created_at: datetime
+    last_active: datetime
+
+
+@dataclass
+class SessionState:
+    session_id: str
+    problem_id: str
+    problem_expression: str
+    expected_final: str
+    attempt_count: int = 0
+    incorrect_attempt_count: int = 0
+    attempt_history: list[dict] = field(default_factory=list)
+    hint_level: int = 1
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    last_active: datetime = field(default_factory=datetime.utcnow)
+
+
+_SESSION_STORE: dict[str, SessionState] = {}
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Custom exceptions
+# Input / engine exceptions (never expose raw SymPy messages to students)
 # ──────────────────────────────────────────────────────────────────────────────
-class ParseError(ValueError):
-    """Raised when a math string cannot be parsed into a SymPy expression."""
+class MathInputError(ValueError):
+    """Base for user-input problems detected before or during parsing."""
+
+    category = "invalid_input"
+    user_message = "That expression could not be read. Check your notation."
+
+    def __init__(self, message: str, *, user_message: str | None = None):
+        super().__init__(message)
+        if user_message is not None:
+            self.user_message = user_message
+
+
+class ParseError(MathInputError):
+    """Legacy alias — malformed or unsupported input."""
+
+    category = "malformed_syntax"
+
+
+class InvalidFormatError(ParseError):
+    """Correct domain but wrong notation (e.g. ** instead of ^)."""
+
+    category = "invalid_format"
+
+
+class MalformedSyntaxError(ParseError):
+    """Syntactically broken input."""
+
+    category = "malformed_syntax"
+    user_message = "Check operators and parentheses — something in the syntax is invalid."
+
+
+class DivisionByZeroError(ParseError):
+    """Division by zero in a literal sub-expression."""
+
+    category = "division_by_zero"
+    user_message = "Division by zero is not defined. Check denominators in your step."
+
+
+class UndefinedMathError(ParseError):
+    """Valid syntax but mathematically undefined result."""
+
+    category = "undefined_math"
+    user_message = "That expression is not defined for the values used (e.g. log(0))."
+
+
+class UndefinedSymbolError(ParseError):
+    """Unrecognized identifier or function name."""
+
+    category = "undefined_symbol"
+    user_message = "An unknown symbol or function was used. Use only variables from the problem."
+
+
+class EvaluationTimeoutError(ParseError):
+    """expand/simplify exceeded the complexity guard."""
+
+    category = "evaluation_timeout"
+    user_message = "This expression is too complex to check quickly. Try a simpler form."
+
+
+class EngineError(Exception):
+    """Unexpected internal failure — logged, generic message to client."""
+
+    category = "engine_error"
+    user_message = "Something went wrong while checking your step. Please try again."
+
+
+def _classification_for_input_error(exc: MathInputError) -> dict:
+    return {
+        "error_type": exc.category,
+        "confidence": "high",
+        "reason": exc.user_message,
+    }
+
+
+def _user_safe_hint_for_input_error(exc: MathInputError) -> str:
+    return exc.user_message
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SymPy helpers
+# ══════════════════════════════════════════════════════════════════════════════
+def _run_timed(func: Callable[..., T], *args, timeout: float = _NORMALIZE_TIMEOUT_SEC, **kwargs) -> T:
+    future = _EXECUTOR.submit(func, *args, **kwargs)
+    try:
+        return future.result(timeout=timeout)
+    except FuturesTimeoutError as exc:
+        raise EvaluationTimeoutError(
+            f"Timed out after {timeout}s: {func.__name__}"
+        ) from exc
+
+
+def _scan_text_for_input_issues(expression: str) -> None:
+    if not expression or not expression.strip():
+        raise MalformedSyntaxError("Empty expression", user_message="Enter an expression to check.")
+
+    if _DIV_ZERO_PATTERN.search(expression):
+        raise DivisionByZeroError(
+            "Division by zero detected in input",
+            user_message=DivisionByZeroError.user_message,
+        )
+
+    for pattern, detail in _UNDEFINED_TEXT_PATTERNS:
+        if pattern.search(expression):
+            raise UndefinedMathError(detail, user_message=UndefinedMathError.user_message)
+
+
+def _sympify_safe(cleaned: str, original: str) -> Expr: #This function is used to safely convert a string to a SymPy expression.
+    try:
+        return sympify(cleaned, locals={"e": E})
+    except SympifyError as exc:
+        msg = str(exc).lower()
+        if "undefined" in msg or "not defined" in msg:
+            raise UndefinedSymbolError(
+                str(exc),
+                user_message=UndefinedSymbolError.user_message,
+            ) from exc
+        raise MalformedSyntaxError(
+            str(exc),
+            user_message=MalformedSyntaxError.user_message,
+        ) from exc
+    except SyntaxError as exc:
+        raise MalformedSyntaxError(
+            str(exc),
+            user_message=MalformedSyntaxError.user_message,
+        ) from exc
+    except TypeError as exc:
+        raise MalformedSyntaxError(
+            str(exc),
+            user_message="Check that numbers and symbols are combined with valid operators.",
+        ) from exc
+    except ZeroDivisionError as exc:
+        raise DivisionByZeroError(str(exc)) from exc
+    except ValueError as exc:
+        raise MalformedSyntaxError(
+            str(exc),
+            user_message=MalformedSyntaxError.user_message,
+        ) from exc
+
+
+def _ensure_algebraically_defined(expr: Expr) -> None:
+    """Reject expressions that simplify to non-finite undefined forms."""
+    if expr.has(zoo) or expr.has(nan):
+        raise UndefinedMathError(
+            "Expression contains undefined value (zoo/nan)",
+            user_message=UndefinedMathError.user_message,
+        )
+
+    try:
+        check = _run_timed(simplify, expr, timeout=3.0)
+    except EvaluationTimeoutError:
+        return
+    except (ZeroDivisionError, ValueError) as exc:
+        raise UndefinedMathError(str(exc)) from exc
+
+    if check is zoo or check is nan:
+        raise UndefinedMathError(
+            "Expression simplifies to an undefined value",
+            user_message=UndefinedMathError.user_message,
+        )
+
+
+def _expr_display(expr: Expr) -> str:
+    """Prefer LaTeX for API-facing structural diff strings."""
+    try:
+        from sympy import latex
+        return latex(expr)
+    except Exception:
+        return str(expr)
+
+
+def _format_symbol_key(key: str) -> str:
+    if key == "1":
+        return "the constant term"
+    return f"the {key} term"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HINT ENGINE
-# A simple lookup table kept outside StepValidator because it is stateless
-# and may be extended / swapped without touching the validation logic.
 # ══════════════════════════════════════════════════════════════════════════════
-_HINT_MAP: dict[str, str] = {
-    "sign_error":         "Check your negative signs carefully.",
-    "arithmetic_error":   "Double-check your arithmetic calculations.",
-    "distribution_error": "Make sure you distribute multiplication across all terms.",
-    "unknown":            "Review each step carefully and check your work.",
+_HINT_LEVELS: dict[str, dict[int, str]] = {
+    "sign_error": {
+        1: "Check the sign on {focus} — a plus/minus mix-up is common here.",
+        2: "Focus on {focus}: does your coefficient have the opposite sign from what you intended?",
+    },
+    "arithmetic_error": {
+        1: "Recalculate the coefficient on {focus}; the value looks off.",
+        2: "Work through the arithmetic for {focus} again, one operation at a time.",
+    },
+    "distribution_error": {
+        1: "When you multiply, each term inside the parentheses must be included.",
+        2: "Your expansion may be missing a piece — multiply through each term inside the parentheses separately.",
+    },
+    "unknown": {
+        1: "Compare your step to the previous line term by term.",
+        2: "Re-check each term and coefficient; one part of the expression does not match.",
+    },
 }
 
 
-def generate_hint(error_type: str) -> str:
-    """Return a student-facing hint string for a given error type."""
-    return _HINT_MAP.get(error_type, _HINT_MAP["unknown"])
+def _hint_focus_from_diff(structural_diff: dict | None, error_type: str) -> str:
+    if not structural_diff:
+        return "one part of your expression"
+
+    coeff_diff = structural_diff.get("coeff_diff", {})
+    if coeff_diff:
+        key = next(iter(coeff_diff))
+        return _format_symbol_key(key)
+
+    missing = structural_diff.get("term_diff", {}).get("missing_terms", [])
+    if missing and error_type == "distribution_error":
+        return "a term from your expansion"
+
+    return "one part of your expression"
+
+
+def generate_hint(
+    error_type: str,
+    structural_diff: dict | None = None,
+    hint_level: int = 1,
+) -> str:
+    """
+    Return a student-facing hint. Level 2 goes deeper; session-based graduation
+    is TODO (Phase 5): wire hint_level to attempt count from the session store.
+    """
+    level = max(1, min(hint_level, 2))
+    templates = _HINT_LEVELS.get(error_type, _HINT_LEVELS["unknown"])
+    template = templates.get(level, templates[1])
+    focus = _hint_focus_from_diff(structural_diff, error_type)
+    return template.format(focus=focus)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP VALIDATOR
-# Encapsulates all four validation layers in one coherent class.
 # ══════════════════════════════════════════════════════════════════════════════
 class StepValidator:
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # LAYER 1 – PARSING
-    # ──────────────────────────────────────────────────────────────────────────
     def parser(self, expression: str) -> Expr:
-        """
-        Pre-process a raw math string, then hand it to SymPy's sympify.
-
-        Exponent notation: use ^ only (e.g. x^2, (x+1)^2). Python's ** is
-        rejected in user input; ^ is converted to ** internally for SymPy.
-
-        Transformations applied (left-to-right, single pass):
-          • digit immediately followed by a letter  →  insert implicit '*'
-            e.g. "2x"  →  "2*x",   "3xy" → "3*x*y" (handled symbol by symbol)
-          • '^'  →  '**'   (internal only, for sympify)
-          • closing ')' immediately followed by '('  →  insert '*'
-            e.g. "(x+1)(x+2)" → "(x+1)*(x+2)"
-
-        Raises ParseError on consecutive binary operators or sympify failure.
-        """
         if "**" in expression:
-            raise ParseError(
-                "Use ^ for exponents (e.g. x^2), not **"
+            raise InvalidFormatError(
+                "Use ^ for exponents (e.g. x^2), not **",
+                user_message="Use ^ for exponents (e.g. x^2), not **.",
             )
+
+        _scan_text_for_input_issues(expression)
 
         processed = []
         i = 0
@@ -136,111 +402,51 @@ class StepValidator:
             ch = expression[i]
             nxt = expression[i + 1] if i + 1 < n else ""
 
-            # Caret exponent → Python exponent for sympify (user never types **)
             if ch == "^":
                 processed.append("**")
-
-            # Implicit multiplication: digit → letter  (e.g. 2x → 2*x)
             elif ch.isdigit() and nxt.isalpha():
                 processed.append(ch)
                 processed.append("*")
-
-            # Implicit multiplication: ) → (  (e.g. (a+b)(c+d) → (a+b)*(c+d))
             elif ch == ")" and nxt == "(":
                 processed.append(")*")
-
-            # Guard against consecutive binary operators in user input (e.g. "+-", "*/")
             elif ch in "+-*/" and nxt in "*/":
-                # Note: "+- " or " -" (unary minus) is intentionally allowed
-                raise ParseError(
-                    f"Consecutive operators at position {i}: '{ch}{nxt}'"
+                raise MalformedSyntaxError(
+                    f"Consecutive operators at position {i}: '{ch}{nxt}'",
+                    user_message=f"Invalid operators near position {i + 1} ('{ch}{nxt}').",
                 )
-
             else:
                 processed.append(ch)
-
             i += 1
 
         cleaned = "".join(processed)
+        expr = _sympify_safe(cleaned, expression)
+        _ensure_algebraically_defined(expr)
+        return expr
 
-        try:
-            # Pass {'e': E} so that bare 'e' is Euler's number, not a symbol
-            return sympify(cleaned, locals={"e": E})
-        except Exception as exc:
-            raise ParseError(f"Cannot parse '{expression}': {exc}") from exc
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # LAYER 2 – NORMALIZATION
-    # ──────────────────────────────────────────────────────────────────────────
     def normalize(self, expr: Expr) -> Expr:
-        """
-        Canonicalize a SymPy expression for stable, order-independent comparison.
+        def _pipeline(e: Expr) -> Expr:
+            normalized = expand(e)
+            for sym in normalized.free_symbols:
+                normalized = collect(normalized, sym)
+            return simplify(normalized)
 
-        Pipeline:
-          expand   – distribute multiplications, remove brackets
-          collect  – group terms by each free symbol
-          simplify – apply algebraic simplification rules
-        """
-        normalized = expand(expr)
-        for sym in normalized.free_symbols:
-            normalized = collect(normalized, sym)
-        return simplify(normalized)
+        return _run_timed(_pipeline, expr)
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # LAYER 3 – COMPARISON  (structural diff extraction lives here)
-    # ──────────────────────────────────────────────────────────────────────────
     @staticmethod
     def _get_terms(expr: Expr) -> set:
-        """
-        Return the top-level additive terms of an expression.
-
-        For an Add node  (a + b + c) → {a, b, c}
-        For anything else (single term)  → {expr}
-        """
         return set(expr.args) if isinstance(expr, Add) else {expr}
 
-    def _extract_structural_diff(
-        self,
-        student: Expr,
-        expected: Expr,
-    ) -> dict:
-        """
-        Inspect two normalized SymPy expressions and return a structured
-        description of their differences.
-
-        Returns
-        -------
-        {
-          "top_level_op": {
-              "student":  str   – SymPy class name of student's top node
-              "expected": str   – SymPy class name of expected's top node
-              "match":    bool
-          },
-          "term_diff": {
-              "missing_terms": list[str]  – in expected but not in student
-              "extra_terms":   list[str]  – in student but not in expected
-          },
-          "coeff_diff": {
-              "<symbol>": {"student": str, "expected": str}, ...
-          },
-          "same_monomial_basis": bool  – True if both share the same coeff keys
-        }
-        """
-        # ── Top-level operation type ──────────────────────────────────────────
-        student_op  = type(student).__name__
+    def _extract_structural_diff(self, student: Expr, expected: Expr) -> dict:
+        student_op = type(student).__name__
         expected_op = type(expected).__name__
 
-        # ── Term-level diff ───────────────────────────────────────────────────
-        student_terms  = self._get_terms(student)
+        student_terms = self._get_terms(student)
         expected_terms = self._get_terms(expected)
 
-        missing_terms = [str(t) for t in expected_terms - student_terms]
-        extra_terms   = [str(t) for t in student_terms  - expected_terms]
+        missing_terms = [_expr_display(t) for t in expected_terms - student_terms]
+        extra_terms = [_expr_display(t) for t in student_terms - expected_terms]
 
-        # ── Coefficient-level diff ────────────────────────────────────────────
-        # as_coefficients_dict() → {symbol_or_1: coefficient}
-        # The key `1` holds the constant term.
-        student_coeffs  = student.as_coefficients_dict()
+        student_coeffs = student.as_coefficients_dict()
         expected_coeffs = expected.as_coefficients_dict()
 
         all_keys = set(student_coeffs) | set(expected_coeffs)
@@ -250,7 +456,7 @@ class StepValidator:
             e_val = expected_coeffs.get(key, 0)
             if simplify(s_val - e_val) != 0:
                 coeff_diff[str(key)] = {
-                    "student":  str(s_val),
+                    "student": str(s_val),
                     "expected": str(e_val),
                 }
 
@@ -258,50 +464,34 @@ class StepValidator:
 
         return {
             "top_level_op": {
-                "student":  student_op,
+                "student": student_op,
                 "expected": expected_op,
-                "match":    student_op == expected_op,
+                "match": student_op == expected_op,
             },
             "term_diff": {
                 "missing_terms": missing_terms,
-                "extra_terms":   extra_terms,
+                "extra_terms": extra_terms,
             },
             "coeff_diff": coeff_diff,
             "same_monomial_basis": same_monomial_basis,
         }
 
     def comparison(self, student_str: str, expected_str: str) -> dict:
-        """
-        Full comparison pipeline for two raw expression strings.
-
-        Steps
-        -----
-        1. parse(student_str)   → SymPy Expr
-        2. parse(expected_str)  → SymPy Expr
-        3. normalize both
-        4. equivalence check:   simplify(student - expected) == 0
-        5. structural diff:     _extract_structural_diff()
-
-        Returns
-        -------
-        {
-          "is_equivalent":  bool,
-          "structural_diff": dict   (see _extract_structural_diff)
-        }
-        """
-        student_expr  = self.normalize(self.parser(student_str))
+        student_expr = self.normalize(self.parser(student_str))
         expected_expr = self.normalize(self.parser(expected_str))
 
-        is_equivalent = simplify(student_expr - expected_expr) == 0
+        is_equivalent = _run_timed(
+            lambda: simplify(student_expr - expected_expr) == 0,
+            timeout=5.0,
+        )
         structural_diff = self._extract_structural_diff(student_expr, expected_expr)
 
         return {
-            "is_equivalent":  bool(is_equivalent),
+            "is_equivalent": bool(is_equivalent),
             "structural_diff": structural_diff,
         }
 
     def _parse_internal(self, expr_str: str) -> Expr:
-        """Parse SymPy string forms using the user-facing ^ exponent rules."""
         return self.parser(expr_str.replace("**", "^"))
 
     @staticmethod
@@ -309,25 +499,17 @@ class StepValidator:
         missing_terms: list[str],
         extra_terms: list[str],
     ) -> bool:
-        """
-        True when term-level missing/extra are only numeric constants
-        (e.g. 3 vs -3), so coeff_diff rules should handle classification.
-        """
-        from sympy import sympify
+        from sympy import sympify as _sympify
 
         for term_str in missing_terms + extra_terms:
             try:
-                if not sympify(term_str).is_Number:
+                if not _sympify(term_str).is_Number:
                     return False
-            except Exception:
+            except (SympifyError, TypeError, ValueError):
                 return False
         return bool(missing_terms or extra_terms)
 
     def _is_distribution_error(self, structural_diff: dict) -> bool:
-        """
-        Distribution applies only when whole terms are missing after expansion,
-        not when the same monomial basis differs only by coefficients.
-        """
         missing_terms = structural_diff["term_diff"]["missing_terms"]
         if not missing_terms:
             return False
@@ -341,55 +523,18 @@ class StepValidator:
 
         return True
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # LAYER 4 – CLASSIFICATION
-    # ──────────────────────────────────────────────────────────────────────────
     def classify_error(self, structural_diff: dict) -> dict:
-        """
-        Map structural differences to an error type using deterministic rules
-        evaluated in priority order.
-
-        Priority
-        --------
-        1. distribution_error  – substantive terms missing after expansion
-           (skipped when only constants differ or the monomial basis is unchanged)
-           Rationale: if a student forgot to distribute, whole terms vanish.
-           Catch this before checking coefficients, which would give a
-           misleading arithmetic_error.
-
-        2. sign_error          – all differing coefficients are sign-flips
-           Rationale: s_coeff + e_coeff == 0  means same magnitude, opposite sign.
-
-        3. arithmetic_error    – coefficients differ in magnitude
-           Rationale: anything else that touches a coefficient is a calculation mistake.
-
-        4. unknown             – fallback; should rarely be reached after a failed
-           equivalence check, but provided for robustness.
-
-        Returns
-        -------
-        {
-          "error_type":  str         ("distribution_error" | "sign_error"
-                                      | "arithmetic_error" | "unknown")
-          "confidence":  str         ("high" | "medium" | "low")
-          "reason":      str         human-readable explanation
-        }
-        """
-        coeff_diff    = structural_diff.get("coeff_diff", {})
+        coeff_diff = structural_diff.get("coeff_diff", {})
         missing_terms = structural_diff["term_diff"]["missing_terms"]
-        extra_terms   = structural_diff["term_diff"]["extra_terms"]
+        extra_terms = structural_diff["term_diff"]["extra_terms"]
 
-        # ── Rule 1: Distribution error ────────────────────────────────────────
         if self._is_distribution_error(structural_diff):
             return {
                 "error_type": "distribution_error",
                 "confidence": "high",
-                "reason": f"Terms missing after expansion: {missing_terms}",
+                "reason": "One or more terms are missing after expansion.",
             }
 
-        # ── Rule 2: Sign error ────────────────────────────────────────────────
-        # All differing coefficients satisfy  student_coeff + expected_coeff == 0,
-        # i.e. equal magnitude but opposite sign.
         if coeff_diff:
             all_sign_flips = all(
                 simplify(
@@ -400,113 +545,219 @@ class StepValidator:
                 for v in coeff_diff.values()
             )
             if all_sign_flips:
+                keys = [_format_symbol_key(k) for k in coeff_diff]
                 return {
                     "error_type": "sign_error",
                     "confidence": "high",
-                    "reason": (
-                        f"Sign is flipped for: {list(coeff_diff.keys())}"
-                    ),
+                    "reason": f"Sign may be flipped on: {', '.join(keys)}",
                 }
 
-        # ── Rule 3: Arithmetic error ──────────────────────────────────────────
         if coeff_diff:
-            # Downgrade confidence to "medium" when extra spurious terms also exist
             confidence = "medium" if extra_terms else "high"
+            keys = [_format_symbol_key(k) for k in coeff_diff]
             return {
                 "error_type": "arithmetic_error",
                 "confidence": confidence,
-                "reason": (
-                    f"Coefficient mismatch for: {list(coeff_diff.keys())}"
-                ),
+                "reason": f"Coefficient mismatch on: {', '.join(keys)}",
             }
 
-        # ── Rule 4: Fallback ──────────────────────────────────────────────────
         return {
             "error_type": "unknown",
             "confidence": "low",
             "reason": "Expressions differ but no specific error pattern was detected.",
         }
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # ORCHESTRATOR – full pipeline
-    # ──────────────────────────────────────────────────────────────────────────
     def validate(self, student_str: str, expected_str: str) -> dict:
-        """
-        Orchestrates the complete pipeline:
-
-          student_str
-            → parse + normalize  (parser / normalize)
-            → compare + diff     (comparison)
-            → classify           (classify_error)      ← skipped if correct
-            → hint               (generate_hint)       ← skipped if correct
-
-        Returns a flat dict consumed directly by the API route.
-        """
         comparison_result = self.comparison(student_str, expected_str)
-        is_equivalent     = comparison_result["is_equivalent"]
-        structural_diff   = comparison_result["structural_diff"]
+        is_equivalent = comparison_result["is_equivalent"]
+        structural_diff = comparison_result["structural_diff"]
 
         if is_equivalent:
             return {
-                "is_equivalent":      True,
-                "structural_diff":    structural_diff,
+                "is_equivalent": True,
+                "structural_diff": structural_diff,
                 "error_classification": None,
-                "hint":               "Correct! Well done.",
+                "hint": "Correct! Well done.",
             }
 
         error_classification = self.classify_error(structural_diff)
-        hint                 = generate_hint(error_classification["error_type"])
+        hint = generate_hint(
+            error_classification["error_type"],
+            structural_diff=structural_diff,
+            hint_level=1,
+        )
 
         return {
-            "is_equivalent":      False,
-            "structural_diff":    structural_diff,
+            "is_equivalent": False,
+            "structural_diff": structural_diff,
             "error_classification": error_classification,
-            "hint":               hint,
+            "hint": hint,
         }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Singleton validator (avoids re-instantiation on every request)
-# ──────────────────────────────────────────────────────────────────────────────
 _validator = StepValidator()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ROUTES
-# ══════════════════════════════════════════════════════════════════════════════
-@app.post("/submit-step", response_model=StepResult)
-def submit_step(data: StepInput):
+def _handle_step_validation(data: StepInput) -> StepResult:
     try:
         result = _validator.validate(data.step, data.expected)
         return StepResult(
-            session_id   = data.session_id,
-            received_step= data.step,
-            expected_step= data.expected,
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=data.expected,
             **result,
         )
-    except ParseError as exc:
+    except MathInputError as exc:
+        logger.info("Input rejected [%s]: %s", exc.category, exc)
         return StepResult(
-            session_id            = data.session_id,
-            received_step         = data.step,
-            expected_step         = data.expected,
-            is_equivalent         = False,
-            structural_diff       = None,
-            error_classification  = None,
-            hint                  = f"Could not parse expression: {exc}",
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=data.expected,
+            is_equivalent=False,
+            structural_diff=None,
+            error_classification=_classification_for_input_error(exc),
+            hint=_user_safe_hint_for_input_error(exc),
         )
     except Exception as exc:
-        # Catch-all so the server never returns a 500 to the student
+        logger.exception("Unhandled engine error")
         return StepResult(
-            session_id            = data.session_id,
-            received_step         = data.step,
-            expected_step         = data.expected,
-            is_equivalent         = False,
-            structural_diff       = None,
-            error_classification  = None,
-            hint                  = f"Unexpected error: {exc}",
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=data.expected,
+            is_equivalent=False,
+            structural_diff=None,
+            error_classification={
+                "error_type": EngineError.category,
+                "confidence": "low",
+                "reason": EngineError.user_message,
+            },
+            hint=EngineError.user_message,
         )
+
+
+def _apply_session_hint_policy(session: SessionState, result: StepResult) -> StepResult:
+    """Escalate hint level, regenerate hints, and reveal solution per session rules."""
+    if (
+        not result.is_equivalent
+        and session.incorrect_attempt_count >= MAX_ATTEMPTS_BEFORE_ESCALATION
+        and session.hint_level == 1
+    ):
+        session.hint_level = 2
+
+    hint = result.hint
+    if (
+        not result.is_equivalent
+        and result.structural_diff is not None
+        and result.error_classification is not None
+    ):
+        hint = generate_hint(
+            result.error_classification["error_type"],
+            structural_diff=result.structural_diff,
+            hint_level=session.hint_level,
+        )
+
+    if (
+        not result.is_equivalent
+        and session.incorrect_attempt_count >= MAX_ATTEMPTS_BEFORE_REVEAL
+    ):
+        hint = f"{hint} — Solution: {session.expected_final}"
+
+    return result.model_copy(update={"hint": hint})
+
+
+@app.post("/start-session", response_model=StartSessionResponse)
+def start_session(data: StartSessionRequest):
+    try:
+        session_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+        _SESSION_STORE[session_id] = SessionState(
+            session_id=session_id,
+            problem_id=data.problem_id,
+            problem_expression=data.problem_expression,
+            expected_final=data.expected_final,
+            created_at=now,
+            last_active=now,
+        )
+        return StartSessionResponse(
+            session_id=session_id,
+            problem_id=data.problem_id,
+            problem_expression=data.problem_expression,
+            message="Session started.",
+        )
+    except Exception:
+        logger.exception("Failed to start session")
+        return StartSessionResponse(
+            session_id="",
+            problem_id=data.problem_id,
+            problem_expression=data.problem_expression,
+            message="Something went wrong while starting the session. Please try again.",
+        )
+
+
+@app.post("/submit-step", response_model=StepResult)
+def submit_step(data: StepInput):
+    session = _SESSION_STORE.get(data.session_id)
+    if session is None:
+        return StepResult(
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=data.expected,
+            is_equivalent=False,
+            structural_diff=None,
+            error_classification=None,
+            hint="Session not found. Please start a new session.",
+        )
+
+    result = _handle_step_validation(data)
+
+    session.attempt_count += 1
+    if not result.is_equivalent:
+        session.incorrect_attempt_count += 1
+
+    result = _apply_session_hint_policy(session, result)
+
+    session.attempt_history.append({
+        "step": data.step,
+        "expected": data.expected,
+        "is_equivalent": result.is_equivalent,
+        "error_type": (
+            result.error_classification.get("error_type")
+            if result.error_classification
+            else None
+        ),
+        "hint": result.hint,
+        "timestamp": datetime.utcnow(),
+    })
+    session.last_active = datetime.utcnow()
+
+    return result
+
+
+@app.get("/session/{session_id}")
+def get_session(session_id: str):
+    session = _SESSION_STORE.get(session_id)
+    if session is None:
+        return {"error": "Session not found"}
+    return SessionSummary(
+        session_id=session.session_id,
+        problem_id=session.problem_id,
+        problem_expression=session.problem_expression,
+        attempt_count=session.attempt_count,
+        hint_level=session.hint_level,
+        attempt_history=session.attempt_history,
+        created_at=session.created_at,
+        last_active=session.last_active,
+    )
+
+
+@app.delete("/session/{session_id}")
+def delete_session(session_id: str):
+    if session_id not in _SESSION_STORE:
+        return {"deleted": False, "error": "Session not found"}
+    del _SESSION_STORE[session_id]
+    return {"deleted": True}
 
 
 @app.get("/")
 def root():
-    return {"status": "MathAssistant backend is running!", "version": "0.2.0"}
+    return {"status": "MathAssistant backend is running!", "version": "0.2.1"}
