@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type StepResponse = {
   session_id: string;
@@ -16,29 +16,73 @@ type StepResponse = {
   hint: string;
 };
 
+const API_BASE = "http://127.0.0.1:8000";
+
 export default function Home() {
   const [step, setStep] = useState("");
   const [expected, setExpected] = useState("x^2+5*x+6");
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [response, setResponse] = useState<StepResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
+
+  const startSession = useCallback(async () => {
+    setSessionLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/start-session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          problem_id: "mvp-demo",
+          problem_expression: expected,
+          expected_final: expected,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.session_id) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : (data.message ?? "Failed to start session")
+        );
+      }
+      setSessionId(data.session_id);
+    } catch (err) {
+      setSessionId(null);
+      setError(
+        err instanceof Error && err.message !== "Failed to fetch"
+          ? err.message
+          : "Cannot reach the backend at http://127.0.0.1:8000. " +
+              "Start it with: python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 " +
+              "(from MathAssistant/backend, with your .venv active)."
+      );
+    } finally {
+      setSessionLoading(false);
+    }
+  }, [expected]);
+
+  useEffect(() => {
+    startSession();
+  }, [startSession]);
 
   const submitStep = async () => {
+    if (!sessionId) {
+      setError("No active session. Refresh the page to start a new one.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResponse(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/submit-step", {
+      const res = await fetch(`${API_BASE}/submit-step`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          step,
-          expected,
-          session_id: "test-session-1",
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step, expected, session_id: sessionId }),
       });
 
       const data = await res.json();
@@ -55,7 +99,7 @@ export default function Home() {
       setError(
         "Cannot reach the backend at http://127.0.0.1:8000. " +
           "Start it with: python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 " +
-          "(from mathassistant/backend, with your .venv active)."
+          "(from MathAssistant/backend, with your .venv active)."
       );
     } finally {
       setLoading(false);
@@ -65,6 +109,14 @@ export default function Home() {
   return (
     <div className="p-10 max-w-2xl">
       <h1 className="text-xl font-bold">MathAssistant MVP</h1>
+      {sessionLoading && (
+        <p className="mt-2 text-sm text-gray-600">Starting session…</p>
+      )}
+      {sessionId && (
+        <p className="mt-2 text-xs text-gray-500 break-all">
+          Session: {sessionId}
+        </p>
+      )}
 
       <label className="block mt-4 text-sm font-medium">Your step</label>
       <input
@@ -85,7 +137,9 @@ export default function Home() {
       <button
         className="mt-4 p-2 bg-blue-500 text-white disabled:opacity-50"
         onClick={submitStep}
-        disabled={loading || !step.trim() || !expected.trim()}
+        disabled={
+          loading || sessionLoading || !sessionId || !step.trim() || !expected.trim()
+        }
       >
         {loading ? "Submitting…" : "Submit"}
       </button>

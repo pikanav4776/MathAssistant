@@ -5,79 +5,18 @@ from __future__ import annotations
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from db.models import Problem
+from db.models import Problem, ProblemWrongAnswer
+from evaluation_dataset import EVALUATION_DATASET
 
 PREDEFINED_PROBLEMS: list[dict[str, str]] = [
     {
-        "id": "dist_001",
-        "expression": "2(x+3)",
-        "expected_final": "2x+6",
-        "difficulty": "easy",
-        "topic": "distribution",
-    },
-    {
-        "id": "dist_002",
-        "expression": "3(x-4)",
-        "expected_final": "3x-12",
-        "difficulty": "easy",
-        "topic": "distribution",
-    },
-    {
-        "id": "dist_003",
-        "expression": "4(2x+5)",
-        "expected_final": "8x+20",
-        "difficulty": "medium",
-        "topic": "distribution",
-    },
-    {
-        "id": "dist_004",
-        "expression": "2(3x^2+x+1)",
-        "expected_final": "6x^2+2x+2",
-        "difficulty": "medium",
-        "topic": "distribution",
-    },
-    {
-        "id": "sign_001",
-        "expression": "x+3-2x+1",
-        "expected_final": "-x+4",
-        "difficulty": "easy",
-        "topic": "simplification",
-    },
-    {
-        "id": "sign_002",
-        "expression": "5x-3-7x+2",
-        "expected_final": "-2x-1",
-        "difficulty": "easy",
-        "topic": "simplification",
-    },
-    {
-        "id": "sign_003",
-        "expression": "-(x+4)+2x",
-        "expected_final": "x-4",
-        "difficulty": "medium",
-        "topic": "simplification",
-    },
-    {
-        "id": "arith_001",
-        "expression": "3x+2x",
-        "expected_final": "5x",
-        "difficulty": "easy",
-        "topic": "simplification",
-    },
-    {
-        "id": "arith_002",
-        "expression": "4x^2+3x^2-x",
-        "expected_final": "7x^2-x",
-        "difficulty": "medium",
-        "topic": "simplification",
-    },
-    {
-        "id": "arith_003",
-        "expression": "2x+3+4x-1",
-        "expected_final": "6x+2",
-        "difficulty": "easy",
-        "topic": "simplification",
-    },
+        "id": problem["problem_id"],
+        "expression": problem["expression"],
+        "expected_final": problem["correct_step"],
+        "difficulty": problem["difficulty"],
+        "topic": problem["topic"],
+    }
+    for problem in EVALUATION_DATASET
 ]
 
 
@@ -90,3 +29,20 @@ def seed_problems(db: Session) -> None:
             .on_conflict_do_nothing(index_elements=["id"])
         )
         db.execute(stmt)
+
+
+def seed_wrong_answers(db: Session) -> None:
+    """Insert canonical wrong answers; safe to call on every startup (idempotent)."""
+    for problem in EVALUATION_DATASET:
+        for wrong in problem["wrong_answers"]:
+            stmt = (
+                insert(ProblemWrongAnswer)
+                .values(
+                    problem_id=problem["problem_id"],
+                    wrong_step=wrong["wrong_step"],
+                    error_type=wrong["expected_error_type"],
+                    description=wrong["description"],
+                )
+                .on_conflict_do_nothing(constraint="uq_problem_wrong_step")
+            )
+            db.execute(stmt)
