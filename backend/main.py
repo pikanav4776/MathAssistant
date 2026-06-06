@@ -32,12 +32,16 @@ import logging
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, TypeVar
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import Session as OrmSession
 from pydantic import BaseModel
 from sympy import (
     Add, E, Mul, Pow,
@@ -46,6 +50,9 @@ from sympy import (
 )
 from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
+
+from db.database import get_db, init_db
+from db.models import Attempt, Problem, TutoringSession
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +77,13 @@ _UNDEFINED_TEXT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 # ──────────────────────────────────────────────────────────────────────────────
 # App bootstrap
 # ──────────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="MathAssistant", version="0.2.1")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="MathAssistant", version="0.2.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -107,15 +120,33 @@ class StepResult(BaseModel):
 
 class StartSessionRequest(BaseModel):
     problem_id: str
-    problem_expression: str
-    expected_final: str
+    problem_expression: str | None = None
+    expected_final: str | None = None
 
 
 class StartSessionResponse(BaseModel):
     session_id: str
     problem_id: str
     problem_expression: str
+    expected_final: str
     message: str
+
+
+class ProblemResponse(BaseModel):
+    id: str
+    expression: str
+    expected_final: str
+    difficulty: str | None
+    topic: str | None
+    created_at: datetime
+
+
+class ProblemCreateRequest(BaseModel):
+    id: str
+    expression: str
+    expected_final: str
+    difficulty: str | None = None
+    topic: str | None = None
 
 
 class SessionSummary(BaseModel):
@@ -141,9 +172,6 @@ class SessionState:
     hint_level: int = 1
     created_at: datetime = field(default_factory=datetime.utcnow)
     last_active: datetime = field(default_factory=datetime.utcnow)
-
-
-_SESSION_STORE: dict[str, SessionState] = {}
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -665,39 +693,213 @@ def _apply_session_hint_policy(session: SessionState, result: StepResult) -> Ste
     return result.model_copy(update={"hint": hint})
 
 
+def _problem_to_response(row: Problem) -> ProblemResponse:
+    return ProblemResponse(
+        id=row.id,
+        expression=row.expression,
+        expected_final=row.expected_final,
+        difficulty=row.difficulty,
+        topic=row.topic,
+        created_at=row.created_at,
+    )
+
+
+@app.get("/problem/{problem_id}", response_model=ProblemResponse)
+def get_problem(problem_id: str, db: OrmSession = Depends(get_db)):
+    """
+    Fetch a single problem by its primary-key ID.
+
+    Inputs: path parameter ``problem_id`` (e.g. ``dist_001``).
+    Returns: ProblemResponse with expression, expected_final, difficulty, topic.
+    Raises HTTP 404 if no row exists for that ID.
+    """
+    row = db.query(Problem).filter_by(id=problem_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"error": "Problem not found"})
+    return _problem_to_response(row)
+
+
+@app.get("/sample-problem", response_model=ProblemResponse)
+def get_sample_problem(
+    difficulty: str | None = None,
+    topic: str | None = None,
+    db: OrmSession = Depends(get_db),
+):
+    """
+    Return one random problem from the library, optionally filtered.
+
+    Query params (all optional):
+      - difficulty: ``easy``, ``medium``, or ``hard`` (case-insensitive)
+      - topic: e.g. ``distribution`` or ``simplification`` (case-insensitive)
+
+    Returns: ProblemResponse for a single randomly selected matching row.
+    Raises HTTP 404 when no problems match the given filters.
+    """
+    query = db.query(Problem)
+    if difficulty is not None:
+        query = query.filter(func.lower(Problem.difficulty) == difficulty.lower())
+    if topic is not None:
+        query = query.filter(func.lower(Problem.topic) == topic.lower())
+
+    row = query.order_by(func.random()).limit(1).first()
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "No problems found matching the given filters."},
+        )
+    return _problem_to_response(row)
+
+
+@app.post("/problem", response_model=ProblemResponse, status_code=201)
+def create_problem(data: ProblemCreateRequest, db: OrmSession = Depends(get_db)):
+    """
+    Insert a new problem into the library (admin use; no auth yet).
+
+    Body: ProblemCreateRequest with id, expression, expected_final, optional
+    difficulty and topic.
+    Returns: HTTP 201 with ProblemResponse on success.
+    Raises HTTP 409 if the ID already exists, HTTP 500 on unexpected DB errors.
+    """
+    # TODO Phase 9+: restrict to admin role
+    if not data.expression.strip() or not data.expected_final.strip():
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "expression and expected_final must be non-empty strings."},
+        )
+
+    try:
+        existing = db.query(Problem).filter_by(id=data.id).first()
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "A problem with this ID already exists."},
+            )
+
+        row = Problem(
+            id=data.id,
+            expression=data.expression,
+            expected_final=data.expected_final,
+            difficulty=data.difficulty,
+            topic=data.topic,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return _problem_to_response(row)
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to create problem")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to create problem. Please try again."},
+        ) from None
+
+
 @app.post("/start-session", response_model=StartSessionResponse)
-def start_session(data: StartSessionRequest):
+def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
+    expr_provided = data.problem_expression is not None
+    final_provided = data.expected_final is not None
+
+    if expr_provided != final_provided:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Provide both expression and expected_final together, or "
+                "neither (to use a pre-existing problem by ID)."
+            },
+        )
+
     try:
         session_id = str(uuid.uuid4())
         now = datetime.utcnow()
-        _SESSION_STORE[session_id] = SessionState(
-            session_id=session_id,
-            problem_id=data.problem_id,
-            problem_expression=data.problem_expression,
-            expected_final=data.expected_final,
-            created_at=now,
-            last_active=now,
+
+        if expr_provided and final_provided:
+            if not data.problem_expression.strip() or not data.expected_final.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "error": "expression and expected_final must be non-empty strings."
+                    },
+                )
+            problem_expression = data.problem_expression
+            expected_final = data.expected_final
+            stmt = (
+                insert(Problem)
+                .values(
+                    id=data.problem_id,
+                    expression=problem_expression,
+                    expected_final=expected_final,
+                )
+                .on_conflict_do_nothing()
+            )
+            db.execute(stmt)
+        else:
+            problem_row = db.query(Problem).filter_by(id=data.problem_id).first()
+            if problem_row is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error": "Problem not found. Provide expression and expected_final, "
+                        "or use GET /sample-problem to find a valid problem ID."
+                    },
+                )
+            problem_expression = problem_row.expression
+            expected_final = problem_row.expected_final
+
+        db.add(
+            TutoringSession(
+                session_id=session_id,
+                problem_id=data.problem_id,
+                attempt_count=0,
+                incorrect_attempt_count=0,
+                hint_level=1,
+                created_at=now,
+                last_active=now,
+            )
         )
+        db.commit()
+
         return StartSessionResponse(
             session_id=session_id,
             problem_id=data.problem_id,
-            problem_expression=data.problem_expression,
+            problem_expression=problem_expression,
+            expected_final=expected_final,
             message="Session started.",
         )
+    except HTTPException:
+        raise
     except Exception:
+        db.rollback()
         logger.exception("Failed to start session")
         return StartSessionResponse(
             session_id="",
             problem_id=data.problem_id,
-            problem_expression=data.problem_expression,
+            problem_expression=data.problem_expression or "",
+            expected_final=data.expected_final or "",
             message="Something went wrong while starting the session. Please try again.",
         )
 
 
 @app.post("/submit-step", response_model=StepResult)
-def submit_step(data: StepInput):
-    session = _SESSION_STORE.get(data.session_id)
-    if session is None:
+def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
+    session_row = (
+        db.query(TutoringSession).filter_by(session_id=data.session_id).first()
+    )
+    if session_row is None:
+        return StepResult(
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=data.expected,
+            is_equivalent=False,
+            structural_diff=None,
+            error_classification=None,
+            hint="Session not found. Please start a new session.",
+        )
+
+    problem_row = db.query(Problem).filter_by(id=session_row.problem_id).first()
+    if problem_row is None:
         return StepResult(
             session_id=data.session_id,
             received_step=data.step,
@@ -710,51 +912,97 @@ def submit_step(data: StepInput):
 
     result = _handle_step_validation(data)
 
-    session.attempt_count += 1
-    if not result.is_equivalent:
-        session.incorrect_attempt_count += 1
+    session_obj = SessionState(
+        session_id=session_row.session_id,
+        problem_id=session_row.problem_id,
+        problem_expression=problem_row.expression,
+        expected_final=problem_row.expected_final,
+        attempt_count=session_row.attempt_count + 1,
+        incorrect_attempt_count=session_row.incorrect_attempt_count
+        + (0 if result.is_equivalent else 1),
+        hint_level=session_row.hint_level,
+        attempt_history=[],
+    )
+    result = _apply_session_hint_policy(session_obj, result)
 
-    result = _apply_session_hint_policy(session, result)
+    session_row.attempt_count = session_obj.attempt_count
+    session_row.incorrect_attempt_count = session_obj.incorrect_attempt_count
+    session_row.hint_level = session_obj.hint_level
+    session_row.last_active = datetime.utcnow()
 
-    session.attempt_history.append({
-        "step": data.step,
-        "expected": data.expected,
-        "is_equivalent": result.is_equivalent,
-        "error_type": (
-            result.error_classification.get("error_type")
-            if result.error_classification
-            else None
-        ),
-        "hint": result.hint,
-        "timestamp": datetime.utcnow(),
-    })
-    session.last_active = datetime.utcnow()
+    attempt_ts = datetime.utcnow()
+    db.add(
+        Attempt(
+            session_id=session_row.session_id,
+            step=data.step,
+            expected=data.expected,
+            is_equivalent=result.is_equivalent,
+            error_type=(
+                result.error_classification.get("error_type")
+                if result.error_classification
+                else None
+            ),
+            hint=result.hint,
+            timestamp=attempt_ts,
+        )
+    )
+    db.commit()
 
     return result
 
 
 @app.get("/session/{session_id}")
-def get_session(session_id: str):
-    session = _SESSION_STORE.get(session_id)
-    if session is None:
+def get_session(session_id: str, db: OrmSession = Depends(get_db)):
+    session_row = (
+        db.query(TutoringSession).filter_by(session_id=session_id).first()
+    )
+    if session_row is None:
         return {"error": "Session not found"}
+
+    problem_row = db.query(Problem).filter_by(id=session_row.problem_id).first()
+    problem_expression = problem_row.expression if problem_row else ""
+
+    attempt_rows = (
+        db.query(Attempt)
+        .filter_by(session_id=session_id)
+        .order_by(Attempt.timestamp.asc())
+        .all()
+    )
+    attempt_history = [
+        {
+            "step": row.step,
+            "expected": row.expected,
+            "is_equivalent": row.is_equivalent,
+            "error_type": row.error_type,
+            "hint": row.hint,
+            "timestamp": row.timestamp,
+        }
+        for row in attempt_rows
+    ]
+
     return SessionSummary(
-        session_id=session.session_id,
-        problem_id=session.problem_id,
-        problem_expression=session.problem_expression,
-        attempt_count=session.attempt_count,
-        hint_level=session.hint_level,
-        attempt_history=session.attempt_history,
-        created_at=session.created_at,
-        last_active=session.last_active,
+        session_id=session_row.session_id,
+        problem_id=session_row.problem_id,
+        problem_expression=problem_expression,
+        attempt_count=session_row.attempt_count,
+        hint_level=session_row.hint_level,
+        attempt_history=attempt_history,
+        created_at=session_row.created_at,
+        last_active=session_row.last_active,
     )
 
 
 @app.delete("/session/{session_id}")
-def delete_session(session_id: str):
-    if session_id not in _SESSION_STORE:
+def delete_session(session_id: str, db: OrmSession = Depends(get_db)):
+    session_row = (
+        db.query(TutoringSession).filter_by(session_id=session_id).first()
+    )
+    if session_row is None:
         return {"deleted": False, "error": "Session not found"}
-    del _SESSION_STORE[session_id]
+
+    db.query(Attempt).filter_by(session_id=session_id).delete()
+    db.delete(session_row)
+    db.commit()
     return {"deleted": True}
 
 
