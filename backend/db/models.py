@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.database import Base
@@ -25,6 +34,28 @@ class Problem(Base):
     )
 
     sessions: Mapped[list[TutoringSession]] = relationship(back_populates="problem")
+    wrong_answers: Mapped[list[ProblemWrongAnswer]] = relationship(
+        back_populates="problem"
+    )
+
+
+# If upgrading from Phase 7, add the description column manually:
+#   ALTER TABLE problem_wrong_answers ADD COLUMN IF NOT EXISTS description TEXT;
+class ProblemWrongAnswer(Base):
+    __tablename__ = "problem_wrong_answers"
+    __table_args__ = (
+        UniqueConstraint("problem_id", "wrong_step", name="uq_problem_wrong_step"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    problem_id: Mapped[str] = mapped_column(
+        String, ForeignKey("problems.id"), nullable=False
+    )
+    wrong_step: Mapped[str] = mapped_column(Text, nullable=False)
+    error_type: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    problem: Mapped[Problem] = relationship(back_populates="wrong_answers")
 
 
 class TutoringSession(Base):

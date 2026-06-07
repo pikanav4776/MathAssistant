@@ -57,14 +57,22 @@ def test_classify_error_probes(validator, expected_type, expected_expr, student_
 
 @pytest.mark.parametrize(
     "item",
-    EVALUATION_DATASET,
-    ids=[item["id"] for item in EVALUATION_DATASET],
+    [
+        (problem, wrong)
+        for problem in EVALUATION_DATASET
+        for wrong in problem["wrong_answers"]
+    ],
+    ids=[
+        f"{problem['problem_id']}-{wrong['expected_error_type']}"
+        for problem in EVALUATION_DATASET
+        for wrong in problem["wrong_answers"]
+    ],
 )
 def test_classify_error_evaluation_dataset(validator, item):
-    """Each labeled wrong step in the Phase 2 dataset must classify correctly."""
-    correct = item["correct"]
-    for wrong in item["wrongs"]:
-        result = validator.validate(wrong["expression"], correct)
-        assert result["is_equivalent"] is False
-        assert result["error_classification"] is not None
-        assert result["error_classification"]["error_type"] == wrong["error_type"]
+    """Each labeled wrong step in the evaluation dataset must classify correctly."""
+    problem, wrong = item
+    correct = problem["correct_step"]
+    result = validator.validate(wrong["wrong_step"], correct)
+    assert result["is_equivalent"] is False
+    assert result["error_classification"] is not None
+    assert result["error_classification"]["error_type"] == wrong["expected_error_type"]

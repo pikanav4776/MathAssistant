@@ -1,14 +1,12 @@
-"""Generate and validate evaluation_dataset.py content."""
+"""Labeled evaluation benchmark for MathAssistant (60 problems).
+
+Each entry includes the problem expression, correct step, metadata, and
+canonical wrong answers with expected error types for the classifier.
+
+Expressions use ^ (not **), matching StepValidator.parser().
+"""
+
 from __future__ import annotations
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from main import StepValidator  # noqa: E402
-
-v = StepValidator()
 
 
 def wrong(wrong_step: str, expected_error_type: str, description: str) -> dict:
@@ -705,48 +703,14 @@ EVALUATION_DATASET: list[dict] = [
 ]
 
 
-def validate() -> None:
-    errors: list[str] = []
-    warnings: list[str] = []
-    for problem in EVALUATION_DATASET:
-        pid = problem["problem_id"]
-        correct = problem["correct_step"]
-        try:
-            v.parser(correct)
-        except Exception as exc:
-            errors.append(f"{pid}: parse error on correct step: {exc}")
-        for wa_entry in problem["wrong_answers"]:
-            wrong = wa_entry["wrong_step"]
-            expected = wa_entry["expected_error_type"]
-            try:
-                v.parser(wrong)
-                result = v.validate(wrong, correct)
-            except Exception as exc:
-                errors.append(f"{pid} {wrong}: parse/validate error: {exc}")
-                continue
-            if result["is_equivalent"]:
-                errors.append(f"{pid} {wrong}: incorrectly equivalent to {correct}")
-                continue
-            got = (
-                result["error_classification"]["error_type"]
-                if result["error_classification"]
-                else "unknown"
-            )
-            if got != expected:
-                warnings.append(f"{pid} {wrong}: expected {expected}, got {got}")
-
-    if warnings:
-        print(f"WARNINGS ({len(warnings)} label mismatches with classifier):")
-        for w in warnings:
-            print(" ", w)
-
-    if errors:
-        print(f"VALIDATION FAILED ({len(errors)} issues):")
-        for e in errors:
-            print(" ", e)
-        sys.exit(1)
-    print(f"All {len(EVALUATION_DATASET)} problems validated OK.")
-
-
-if __name__ == "__main__":
-    validate()
+FLAT_DATASET: list[dict] = [
+    {
+        "problem_id": problem["problem_id"],
+        "expression": problem["expression"],
+        "correct_step": problem["correct_step"],
+        "wrong_step": wrong_entry["wrong_step"],
+        "expected_error_type": wrong_entry["expected_error_type"],
+    }
+    for problem in EVALUATION_DATASET
+    for wrong_entry in problem["wrong_answers"]
+]

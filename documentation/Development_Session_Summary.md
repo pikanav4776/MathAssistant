@@ -1,6 +1,6 @@
 # MathAssistant — Development Session Summary
 
-This document consolidates the full Cursor development thread: Phases 5–8, PostgreSQL setup, troubleshooting, and frontend delivery.
+This document consolidates the full Cursor development thread: Phases 5–9, PostgreSQL setup, troubleshooting, and frontend delivery.
 
 ---
 
@@ -134,6 +134,8 @@ backend/.env.example
 
 Seeded on every startup with `INSERT ... ON CONFLICT DO NOTHING`.
 
+*(Expanded to 60 problems + wrong answers in Phase 9 — see below.)*
+
 ### New endpoints
 | Endpoint | Purpose |
 |----------|---------|
@@ -183,6 +185,126 @@ frontend/
 
 ### Input errors (client-side)
 Types like `malformed_syntax`, `division_by_zero` show yellow **Input error** banner and do **not** increment the attempt dot tracker.
+
+---
+
+## Phase 9 — Scaled dataset (60 problems) + evaluation tooling
+
+### What was built
+Expanded the problem library from 10 to **60 problems** with canonical wrong answers for classifier evaluation. No backend validation logic, endpoints, or frontend files were modified.
+
+### New table: `problem_wrong_answers`
+
+| Column | Type |
+|--------|------|
+| id | SERIAL PK |
+| problem_id | VARCHAR FK → problems.id |
+| wrong_step | TEXT |
+| error_type | VARCHAR (`distribution_error` / `sign_error` / `arithmetic_error`) |
+| description | TEXT (nullable) |
+
+- `UNIQUE(problem_id, wrong_step)` supports idempotent seeding
+- Tables created via `create_all()` — no Alembic
+- Upgrade comment in `models.py`:
+  ```sql
+  ALTER TABLE problem_wrong_answers ADD COLUMN IF NOT EXISTS description TEXT;
+  ```
+
+### Dataset distribution (exact targets)
+
+| Dimension | Count |
+|-----------|-------|
+| **Difficulty:** easy / medium / hard | 20 / 25 / 15 |
+| **Topic:** distribution | 20 |
+| **Topic:** simplification | 20 |
+| **Topic:** double_expansion | 10 |
+| **Topic:** linear_steps | 10 |
+
+**Wrong answers:** 2 per problem (120 total flat entries).
+
+**Topic → required wrong-answer coverage:**
+| Topic | Required wrong-answer types |
+|-------|----------------------------|
+| distribution | `distribution_error` |
+| simplification | `sign_error` + `arithmetic_error` |
+| double_expansion | `distribution_error` + `arithmetic_error` |
+| linear_steps | `sign_error` + `arithmetic_error` |
+
+**ID conventions:** Original Phase 7 IDs retained unchanged (`dist_001`–`dist_004`, `sign_001`–`sign_003`, `arith_001`–`arith_003`). New IDs: `dist_`, `sign_`, `arith_`, `simp_`, `dexp_`, `lin_` prefixes.
+
+### Single source of truth: `backend/evaluation_dataset.py`
+
+Each problem entry shape:
+```python
+{
+    "problem_id": "dist_001",
+    "expression": "2(x+3)",
+    "correct_step": "2x+6",
+    "wrong_answers": [
+        {
+            "wrong_step": "6",
+            "expected_error_type": "distribution_error",
+            "description": "Multiplied only the constant; dropped the x term."
+        },
+        ...
+    ],
+    "difficulty": "easy",
+    "topic": "distribution"
+}
+```
+
+**`FLAT_DATASET`** — backward-compatible flat list (one row per wrong answer) for Phase 3 tests and scripts:
+```python
+{
+    "problem_id", "expression", "correct_step",
+    "wrong_step", "expected_error_type"
+}
+```
+
+`backend/tests/evaluation_dataset.py` re-exports `EVALUATION_DATASET` and `FLAT_DATASET` for existing test imports.
+
+### Seeding (`db/seed.py`)
+- `seed_problems(db)` — inserts all 60 problems from `EVALUATION_DATASET` with `ON CONFLICT DO NOTHING`
+- `seed_wrong_answers(db)` — inserts all canonical wrong answers; called immediately after `seed_problems()` in `init_db()`
+
+### Evaluation scripts
+
+**`scripts/verify_dataset.py`** — distribution report (no DB connection)
+```powershell
+python scripts/verify_dataset.py
+```
+Exits with code 1 if: total problems < 50, any problem has < 2 wrong answers, any error type > 60% of wrong answers, or any difficulty level has 0 problems.
+
+**`scripts/evaluate_classifier.py`** — portfolio-grade classifier evaluation
+```powershell
+python scripts/evaluate_classifier.py
+```
+Runs every `FLAT_DATASET` entry through `StepValidator.validate()` and reports parse success, confusion matrix, per-class precision/recall/F1, macro F1, overall accuracy, unknown rate, and misclassified entries.
+
+### Classifier evaluation results (initial run)
+
+| Metric | Result |
+|--------|--------|
+| Parse success | 120/120 (100%) |
+| Overall accuracy | 116/120 (96.7%) |
+| Macro F1 | 0.96 |
+| Unknown rate | 0% |
+
+**4 known misclassifications** (pedagogically labeled sign/arithmetic errors, but SymPy factors quadratics like `7x^2-x` → classifier returns `distribution_error`):
+
+| Problem | Wrong step | Expected | Got |
+|---------|------------|----------|-----|
+| `arith_002` | `7x^2+x` | sign_error | distribution_error |
+| `arith_002` | `6x^2-x` | arithmetic_error | distribution_error |
+| `lin_009` | `-x^2-x` | sign_error | distribution_error |
+| `lin_010` | `-3x^2-3x` | sign_error | distribution_error |
+
+Wrong answers were tuned against actual `StepValidator` rules (e.g. distribution errors use dropped-term patterns like `6` vs `2x+6`, not `2x+3` which classifies as arithmetic).
+
+### Tests updated
+- `tests/benchmark_runner.py` — uses `FLAT_DATASET`
+- `tests/test_classify_error.py` — parametrizes over new dataset shape
+- `tests/run_evaluation.py` — uses `FLAT_DATASET`
 
 ---
 
@@ -304,7 +426,17 @@ Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8000/submit-step `
 
 ---
 
-## Pre–Phase 9 testing checklist
+## Phase 9 validation checklist
+
+- [ ] Backend starts with `Application startup complete` (seeds 60 problems + wrong answers)
+- [ ] `python scripts/verify_dataset.py` — exits 0, reports 60 problems
+- [ ] `python scripts/evaluate_classifier.py` — parse 120/120, macro F1 ~0.96
+- [ ] `GET /sample-problem?topic=double_expansion` returns a FOIL problem
+- [ ] `GET /sample-problem?topic=linear_steps` returns a linear-simplification problem
+- [ ] `pytest tests/` — note 4 known classifier mismatches on `arith_002`, `lin_009`, `lin_010`
+- [ ] Frontend on **localhost:3000** — full flow still works
+
+## Pre–Phase 9 testing checklist (Phases 5–8)
 
 - [ ] Backend starts with `Application startup complete`
 - [ ] `GET /` returns health JSON
@@ -315,7 +447,6 @@ Invoke-RestMethod -Method POST -Uri http://127.0.0.1:8000/submit-step `
 - [ ] 3 wrong attempts → deeper hint (level 2)
 - [ ] 5 wrong attempts → solution in hint
 - [ ] Session survives uvicorn restart (PostgreSQL)
-- [ ] `pytest tests/` — 91 tests pass
 - [ ] Frontend on **localhost:3000** loads a problem automatically
 - [ ] Full flow: pick problem → start → submit → complete
 
@@ -333,8 +464,8 @@ Connection: `localhost:5433`, database `mathassistant`, user `postgres`.
 
 ## What comes next (from project plan)
 
-- **Phase 9:** Scale dataset to 50–100 problems
-- **Phase 10:** Evaluation report (accuracy metrics)
+- **Phase 10:** Evaluation report (formal write-up of classifier metrics)
+- **Classifier hardening:** Fix factorization edge cases on `7x^2-x`-style answers (4 known mismatches)
 - **Future:** Auth on `POST /problem`, OCR, expanded subjects
 
 ---
@@ -344,11 +475,17 @@ Connection: `localhost:5433`, database `mathassistant`, user `postgres`.
 | File | Phases |
 |------|--------|
 | `backend/main.py` | 5, 6, 7 |
-| `backend/db/*` | 6, 7 |
+| `backend/db/*` | 6, 7, 9 |
+| `backend/evaluation_dataset.py` | 9 |
+| `backend/tests/evaluation_dataset.py` | 9 |
+| `backend/tests/benchmark_runner.py` | 9 |
+| `backend/tests/test_classify_error.py` | 9 |
+| `scripts/verify_dataset.py` | 9 |
+| `scripts/evaluate_classifier.py` | 9 |
 | `backend/requirements.txt` | 6 |
 | `frontend/*` | 8 |
 | `app/page.tsx` | 5 (partial session fix, superseded by Phase 8 frontend) |
 
 ---
 
-*Generated from the MathAssistant Cursor development session — Phases 5 through 8.*
+*Generated from the MathAssistant Cursor development session — Phases 5 through 9.*

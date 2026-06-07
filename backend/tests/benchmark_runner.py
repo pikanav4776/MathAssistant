@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from main import ParseError, StepValidator
-from tests.evaluation_dataset import EVALUATION_DATASET
+from tests.evaluation_dataset import FLAT_DATASET
 
 
 @dataclass
@@ -80,66 +80,65 @@ def run_evaluation_benchmark(validator: StepValidator | None = None) -> Benchmar
     v = validator or StepValidator()
     report = BenchmarkReport()
 
-    for item in EVALUATION_DATASET:
-        item_id = item["id"]
-        correct = item["correct"]
-        for wrong in item["wrongs"]:
-            report.total += 1
-            expr = wrong["expression"]
-            label = wrong["error_type"]
-            report.by_expected_label[label] = report.by_expected_label.get(label, 0) + 1
-            tag = f"{item_id} ({label})"
+    for row in FLAT_DATASET:
+        item_id = row["problem_id"]
+        correct = row["correct_step"]
+        report.total += 1
+        expr = row["wrong_step"]
+        label = row["expected_error_type"]
+        report.by_expected_label[label] = report.by_expected_label.get(label, 0) + 1
+        tag = f"{item_id} ({label})"
 
-            try:
-                result = v.validate(expr, correct)
-                equiv = result["is_equivalent"]
-                got = (
-                    result["error_classification"]["error_type"]
+        try:
+            result = v.validate(expr, correct)
+            equiv = result["is_equivalent"]
+            got = (
+                result["error_classification"]["error_type"]
+                if result["error_classification"]
+                else "correct"
+            )
+            equiv_ok = not equiv
+            class_ok = got == label
+            ok = equiv_ok and class_ok
+
+            case = BenchmarkCaseResult(
+                case_id=item_id,
+                error_type=label,
+                expression=expr,
+                passed=ok,
+                false_positive=equiv,
+                expected_label=label,
+                got_label=got,
+                reason=(
+                    result["error_classification"].get("reason", "")
                     if result["error_classification"]
-                    else "correct"
-                )
-                equiv_ok = not equiv
-                class_ok = got == label
-                ok = equiv_ok and class_ok
+                    else ""
+                ),
+            )
 
-                case = BenchmarkCaseResult(
+            if ok:
+                report.passed += 1
+            else:
+                report.failed += 1
+                if equiv:
+                    report.false_positives += 1
+                if not class_ok:
+                    report.misclassifications += 1
+                report.failures.append(case)
+
+        except ParseError as exc:
+            report.failed += 1
+            report.parse_failures += 1
+            report.failures.append(
+                BenchmarkCaseResult(
                     case_id=item_id,
                     error_type=label,
                     expression=expr,
-                    passed=ok,
-                    false_positive=equiv,
+                    passed=False,
+                    parse_failed=True,
                     expected_label=label,
-                    got_label=got,
-                    reason=(
-                        result["error_classification"].get("reason", "")
-                        if result["error_classification"]
-                        else ""
-                    ),
+                    got_label=f"parse_error: {exc}",
                 )
-
-                if ok:
-                    report.passed += 1
-                else:
-                    report.failed += 1
-                    if equiv:
-                        report.false_positives += 1
-                    if not class_ok:
-                        report.misclassifications += 1
-                    report.failures.append(case)
-
-            except ParseError as exc:
-                report.failed += 1
-                report.parse_failures += 1
-                report.failures.append(
-                    BenchmarkCaseResult(
-                        case_id=item_id,
-                        error_type=label,
-                        expression=expr,
-                        passed=False,
-                        parse_failed=True,
-                        expected_label=label,
-                        got_label=f"parse_error: {exc}",
-                    )
-                )
+            )
 
     return report

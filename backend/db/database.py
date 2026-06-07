@@ -102,11 +102,12 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
 
-    from db.seed import seed_problems
+    from db.seed import seed_problems, seed_wrong_answers
 
     db = SessionLocal()
     try:
         seed_problems(db)
+        seed_wrong_answers(db)
         db.commit()
     except Exception:
         db.rollback()
