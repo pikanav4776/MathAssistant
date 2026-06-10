@@ -456,7 +456,9 @@ class StepValidator:
             normalized = expand(e)
             for sym in normalized.free_symbols:
                 normalized = collect(normalized, sym)
-            return simplify(normalized)
+            # collect() can factor polynomials (e.g. 7x^2+x → x*(7x+1)), which
+            # breaks structural term/coefficient comparison — re-expand to sum form.
+            return expand(simplify(normalized))
 
         return _run_timed(_pipeline, expr)
 
@@ -527,7 +529,12 @@ class StepValidator:
         missing_terms: list[str],
         extra_terms: list[str],
     ) -> bool:
+        """SymPy sometimes swaps explicit constant terms (e.g. +1 vs +2) without
+        dropping a monomial — not a missing-term distribution mistake."""
         from sympy import sympify as _sympify
+
+        if not missing_terms or not extra_terms:
+            return False
 
         for term_str in missing_terms + extra_terms:
             try:
@@ -535,7 +542,7 @@ class StepValidator:
                     return False
             except (SympifyError, TypeError, ValueError):
                 return False
-        return bool(missing_terms or extra_terms)
+        return True
 
     def _is_distribution_error(self, structural_diff: dict) -> bool:
         missing_terms = structural_diff["term_diff"]["missing_terms"]
@@ -548,6 +555,22 @@ class StepValidator:
 
         if structural_diff.get("same_monomial_basis", False):
             return False
+
+        # NEW GUARD: if every missing term has a corresponding extra term
+        # that shares the same monomial base (differing only by sign or
+        # coefficient), this is a sign/arithmetic error, not a missing term.
+        if len(missing_terms) == len(extra_terms) and len(missing_terms) > 0:
+            from sympy import sympify, Symbol
+            try:
+                pairs_match = all(
+                    sympify(m).as_coefficients_dict().keys() ==
+                    sympify(e).as_coefficients_dict().keys()
+                    for m, e in zip(sorted(missing_terms), sorted(extra_terms))
+                )
+                if pairs_match:
+                    return False
+            except Exception:
+                pass
 
         return True
 

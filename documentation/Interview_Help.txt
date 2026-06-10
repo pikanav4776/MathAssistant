@@ -1,0 +1,84 @@
+Your instinct is right — the differentiator is **guided learning, not answer dumping**. Here is a tighter interview framing that stays honest about today’s build while leaving room for future AI.
+
+---
+
+## The one-liner (30 seconds)
+
+> “MathAssistant is a step-by-step algebra tutor that validates each move a student makes, figures out *what kind* of mistake they made, and gives targeted hints — instead of just giving them the answer. Right now the core engine is deterministic — SymPy plus rule-based error classification — but the product is designed so AI can layer on top later for richer explanations and problem understanding.”
+
+That is accurate: the docs and code describe a **deterministic validation pipeline**, not an LLM chatbot.
+
+---
+
+## The fuller pitch (1–2 minutes)
+
+You could structure it in four beats:
+
+### 1. The problem you are solving
+> “Most AI math tools are answer machines. A student pastes a problem and gets a solution. That helps in the moment, but it does not build algebraic reasoning — and it can create dependency or integrity issues. MathAssistant is built around a different goal: help the student *discover* the answer by validating their work step by step.”
+
+### 2. How it works (the technical story)
+> “When a student submits a step, we run it through a pipeline: parse the expression, normalize it algebraically with SymPy, then compare it against the expected step. If it is not equivalent, we extract a **structural diff** — which terms are missing, which coefficients are wrong — and classify the error into categories like sign mistakes, arithmetic errors, or distribution errors. That classification drives a hint engine that tells the student *what to look at*, not the full solution.”
+
+That maps directly to your architecture:
+
+```
+parse → normalize → comparison → classify_error → generate_hint
+```
+
+### 3. The tutoring behavior (what makes it feel “smart”)
+> “It is session-aware. After repeated wrong attempts, hints escalate from gentle nudges to more specific guidance, and eventually the solution is revealed — but only after the student has had a real chance to work through it. We track attempt history in PostgreSQL so the system remembers where the student struggled.”
+
+### 4. Where AI fits (honest + forward-looking)
+> “The MVP does not call an LLM today. The intelligence is in symbolic math and deterministic rules — which is actually a strength: predictable, testable, no hallucinated math. The roadmap is to add AI on top — for example, natural-language hints, problem-type detection from free-form input, or richer explanations — while keeping SymPy as the ground truth for whether a step is actually correct.”
+
+That last line is important in interviews: you are not hand-waving “AI” — you are describing a **hybrid architecture** where symbolic math validates and AI explains.
+
+---
+
+## Refining your draft sentence
+
+Your version:
+> “MathAssistant is a unique AI based tool which guides students towards solving the answer by evaluating and normalizing their steps and using the structural_difference to find the error and convey it to the user.”
+
+Suggested polish:
+
+> “MathAssistant is an algebra tutoring tool that guides students toward the correct solution by validating each step they submit. It parses and normalizes expressions with SymPy, compares them against the expected step, uses the structural difference to classify the mistake, and returns a targeted hint — rather than the full answer.”
+
+Then add the AI caveat as a follow-up, not baked into the opening:
+
+> “We call it AI-oriented because the product vision includes LLM-powered explanations and problem understanding, but the current MVP is a deterministic symbolic engine — which gives us reliable math validation we can benchmark and test.”
+
+---
+
+## If they ask “So is it AI or not?”
+
+A strong, honest answer:
+
+> “Today, the *math brain* is SymPy — symbolic, deterministic, fully testable. The *tutoring layer* is rule-based hints driven by error classification. That is intentional for an MVP: we need to trust that ‘correct’ and ‘incorrect’ are actually correct. AI is on the roadmap for the parts where language and pedagogy matter most — turning a classified error into a conversational explanation, or helping a student who is stuck on *how* to start a problem. The symbolic engine stays as the validator; AI becomes the tutor’s voice.”
+
+That shows you understand the difference between **verification** (must be exact) and **guidance** (can be generative).
+
+---
+
+## Phrases that land well in interviews
+
+| Say this | Instead of |
+|---|---|
+| “Guided learning, not answer generation” | “AI math tool” |
+| “Deterministic symbolic validation” | “AI evaluates your steps” |
+| “Structural diff → error taxonomy → hints” | “It finds the error” (too vague) |
+| “Session-based hint escalation” | “It gives hints” |
+| “Hybrid: SymPy for truth, AI for explanation (roadmap)” | Claiming it is fully AI today |
+
+---
+
+## Optional closing (shows product thinking)
+
+> “We scoped the MVP to algebra only, structured text input, no OCR — because step validation only works if you control the input format. The bet is that a narrow, reliable tutor beats a broad, hallucination-prone one for actual learning.”
+
+That ties back to your product spec constraints and shows intentional scope discipline.
+
+---
+
+Your core story is solid. The main tweak is: lead with **what problem it solves and how the pipeline works**, mention AI as **future enhancement on a trustworthy symbolic core**, and use “structural diff” as the technical hook that shows you built something more than a wrapper around ChatGPT.
