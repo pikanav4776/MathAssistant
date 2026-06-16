@@ -2,22 +2,12 @@
 
 Vanilla HTML, CSS, and JavaScript UI for the MathAssistant algebra step validator.
 
+See the root [README.md](../README.md) for full project setup (database, backend, testing).
+
 ## Prerequisites
 
-1. **Backend** running at `http://localhost:8000`
-2. **PostgreSQL** configured via `backend/.env` (`DATABASE_URL`)
-
-## Start the backend
-
-From the project root:
-
-```bash
-cd backend
-.venv\Scripts\activate        # Windows
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Wait for `Application startup complete.`
+1. **Backend** running at `http://127.0.0.1:8000` (see root README)
+2. **PostgreSQL** configured via `backend/.env` (`DATABASE_URL`; see `backend/.env.example`)
 
 ## Serve the frontend
 
@@ -27,15 +17,15 @@ Wait for `Application startup complete.`
 
 | Service | Port | Command | URL |
 |---------|------|---------|-----|
-| **Backend** (FastAPI) | **8000** | `uvicorn` from `backend/` | http://127.0.0.1:8000 |
-| **Frontend** (this app) | **3000** | `python -m http.server 3000` from `frontend/` | http://localhost:3000 |
+| **Backend** (FastAPI) | **8000** | `.\start.ps1` from `backend/` | http://127.0.0.1:8000 |
+| **Frontend** (this app) | **3000** | `.\start.ps1` from `frontend/` | http://localhost:3000 |
 
-**Do NOT** run `python -m http.server 8000` — that steals the backend port.  
-**Do NOT** run `npm run dev` — that is the old Next.js app, not this frontend.
+**Do NOT** run `python -m http.server 8000` — that steals the backend port.
+**Do NOT** run `npm run dev` — that is the legacy Next.js app in `app/`, not this frontend.
 
-```bash
+```powershell
 cd frontend
-python -m http.server 3000
+.\start.ps1
 ```
 
 Open: **http://localhost:3000**

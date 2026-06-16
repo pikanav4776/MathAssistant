@@ -4,7 +4,19 @@ Here’s your **end-to-end execution plan from this point forward**, distilled a
 
 # MathAssistant — Full Remaining Plan (MVP Completion Path)
 
-## PHASE 1 — Stabilize Core Engine (YOU ARE HERE)
+## STATUS (June 2026)
+
+✅ Phase 1–4: Core engine + automated tests
+✅ Phase 5: Session APIs (/start-session, /submit-step, /session)
+✅ Phase 6: PostgreSQL integration
+✅ Phase 7: Problem retrieval (/problem, /sample-problem, POST /problem)
+✅ Phase 8: Frontend integration (frontend/ primary UI)
+🔄 Phase 9: Scale dataset (in progress — see reports/evaluation_report.md)
+🔄 Phase 10: Evaluation report (partial — reports/evaluation_report.md exists)
+
+---
+
+## PHASE 1 — Stabilize Core Engine
 
 ### Goal
 
@@ -193,7 +205,7 @@ Now it feels like a real product.
 
 ---
 
-## PHASE 9 — SCALE DATASET (50–100 PROBLEMS)
+## PHASE 9 — SCALE DATASET (50–100 PROBLEMS) (YOU ARE HERE)
 
 ONLY AFTER everything above works.
 

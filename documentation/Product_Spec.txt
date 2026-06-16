@@ -1,52 +1,128 @@
 Product name: MathAssistant
-Version: v0.1 (MVP)
-Date 5/26/2026
+Version: v0.2 (MVP)
+Last updated: June 16, 2026
 
-Problem Statement
-	While many AI based math applications give students answers to problems they have questions on, these applications do not take deliberate steps to guide students towards the answer so that the student may be able to solve a problem and come to the right answer. Over time, this can create dependence on tools which give answers, which can lead to cases of academic integrity violations and does not faciliate independent thinking skills. This application seeks to address this by guiding students toward the answer instead by providing detailed feedback and hints; rather than full answers.
-	
-Goals:
+================================================================================
+PROBLEM STATEMENT
+================================================================================
+
+While many AI-based math applications give students answers to problems they
+have questions on, these applications do not take deliberate steps to guide
+students toward the answer so that the student may solve the problem
+independently. Over time, this can create dependence on tools that give
+answers, which can lead to academic integrity issues and does not facilitate
+independent thinking skills.
+
+MathAssistant addresses this by guiding students with detailed feedback and
+hints rather than full answers.
+
+================================================================================
+EDUCATIONAL PHILOSOPHY
+================================================================================
+
+Students learn mathematics most effectively when they actively engage with the
+problem-solving process. MathAssistant prioritizes guided discovery, error
+correction, and conceptual understanding over immediate answer generation.
+
+Runtime validation is deterministic (SymPy + rule-based classification). LLMs
+may assist with offline tasks such as dataset creation, but the MVP tutoring
+path does not call an LLM at request time.
+
+================================================================================
+GOALS
+================================================================================
+
+Primary goals:
 	- identify what kind of problem is being given
-	- detect first incorrect algebra step
+	- detect the first incorrect algebra step
 	- generate pedagogically useful hints
-	- support step-by-step solving workflow
+	- support a step-by-step solving workflow
 	- confirm if a final answer is correct or not
 
-Subsequent Concerns:
-	- no OCR or image processing in the MVP
-	- strictly stick to Algebra problems
-	- don't generate sample problems, solely guide students to solve answers
-	
-Target Users:
-	- high school students (Algebra I–II focus)
+Success metrics:
+
+	Metric                          Target
+	------------------------------  ------
+	Problem type detection          100%
+	Final answer accuracy           >= 80%
+	Error classification accuracy   >= 70%
+	First error detection           100%
+	Hint usefulness                 >= 75%
+
+Measured results: see reports/evaluation_report.md
+
+================================================================================
+TARGET USERS
+================================================================================
+
+	- high school students (Algebra I-II focus)
+	- self-study STEM learners
 	- SAT prep learners (optional later)
-	- self-study STEM students
-	
-User Journey (Core Flow):
-	- user inputs math problem
-	- submits step
-	- system validates step
-	- system gives feedback/hints
-	- user continues for 3 attempts
-	- solution retrieval
-	
-Core Features:
-	- problem type detection
-	- step input interface
-	- step validation system
-	- error classification
+
+================================================================================
+USER JOURNEY (CORE FLOW)
+================================================================================
+
+	1. user selects or enters an algebra problem
+	2. user starts a tutoring session
+	3. user submits one algebraic step
+	4. system validates the step
+	5. system returns feedback, error classification, and hints
+	6. user continues submitting steps
+	7. after repeated incorrect attempts, hints escalate; solution may be revealed
+
+================================================================================
+MVP SCOPE
+================================================================================
+
+Included:
+	- algebra problem solving
+	- step validation
+	- error detection and classification
 	- hint generation
 	- attempt tracking
+	- final answer verification
+	- pre-seeded problem library (GET /sample-problem returns stored problems)
 
-Success Metrics:
-	- Can completely detect what kind of problem the user intends to solve
-	- It generates the correct answer ≥80% of the time.
-	- Correct error classification ≥70%
-	- ALL errors are purely numerical.
-	
-Constraints
-	no OCR
-	limited math domain (algebra only)
-	structured input format required
-	problems can not be excessively complicated(i.e. no systems with more than 5 variables)
-	
+Excluded:
+	- OCR / image processing
+	- geometry, calculus, statistics
+	- automatic AI problem generation
+	- systems with more than five variables
+
+Note on sample problems: the MVP does not generate problems with an LLM at
+runtime. GET /sample-problem returns randomly selected rows from the seeded
+PostgreSQL problem library.
+
+================================================================================
+CORE FEATURES
+================================================================================
+
+Problem type detection
+	Determine the algebraic category (e.g. distribution, simplification).
+
+Step validation engine
+	Compare step transitions, validate transformations, detect the first incorrect
+	operation.
+
+Error classification
+	Categorize mistakes (arithmetic, sign, distribution, combining-like-terms,
+	equation balancing, etc.).
+
+Hint generation
+	Produce contextual hints from error type, equation state, and attempt history.
+	Reveal the next helpful step rather than the full solution (until attempt
+	limits are reached).
+
+Attempt tracking
+	Track attempt count, incorrect attempts, hint level, and session progress.
+
+================================================================================
+CONSTRAINTS
+================================================================================
+
+	- no OCR
+	- algebra domain only
+	- structured text input required (^ for exponents, not **)
+	- problems must not be excessively complicated (no systems with more than
+	  five variables)

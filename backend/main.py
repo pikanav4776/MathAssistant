@@ -41,7 +41,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session as OrmSession
+from sqlalchemy.orm import Session as OrmSession 
 from pydantic import BaseModel
 from sympy import (
     Add, E, Mul, Pow,
@@ -56,9 +56,9 @@ from db.models import Attempt, Problem, TutoringSession
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
-_EXECUTOR = ThreadPoolExecutor(max_workers=2)
-_NORMALIZE_TIMEOUT_SEC = 10.0
+T = TypeVar("T") 
+_EXECUTOR = ThreadPoolExecutor(max_workers=2) 
+_NORMALIZE_TIMEOUT_SEC = 10.0 
 
 MAX_ATTEMPTS_BEFORE_ESCALATION = 3
 MAX_ATTEMPTS_BEFORE_REVEAL = 5
@@ -141,7 +141,7 @@ class ProblemResponse(BaseModel):
     created_at: datetime
 
 
-class ProblemCreateRequest(BaseModel):
+class ProblemCreateRequest(BaseModel): # this is the request body for creating a problem
     id: str
     expression: str
     expected_final: str
@@ -412,9 +412,10 @@ def generate_hint(
 # STEP VALIDATOR
 # ══════════════════════════════════════════════════════════════════════════════
 class StepValidator:
+    """This class is used to validate a step of a problem."""
 
     def parser(self, expression: str) -> Expr:
-        if "**" in expression:
+        if "**" in expression: # does this even matter? "**" and "^" should be accepted equally; perhaps this InvalidFormatError should be removed post-MVP.
             raise InvalidFormatError(
                 "Use ^ for exponents (e.g. x^2), not **",
                 user_message="Use ^ for exponents (e.g. x^2), not **.",
@@ -451,7 +452,7 @@ class StepValidator:
         _ensure_algebraically_defined(expr)
         return expr
 
-    def normalize(self, expr: Expr) -> Expr:
+    def normalize(self, expr: Expr) -> Expr: # cannonical form of the expression ;
         def _pipeline(e: Expr) -> Expr:
             normalized = expand(e)
             for sym in normalized.free_symbols:
@@ -467,6 +468,7 @@ class StepValidator:
         return set(expr.args) if isinstance(expr, Add) else {expr}
 
     def _extract_structural_diff(self, student: Expr, expected: Expr) -> dict:
+        # this function is used to extract the structural diff between the student's and expected expressions.
         student_op = type(student).__name__
         expected_op = type(expected).__name__
 

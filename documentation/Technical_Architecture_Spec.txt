@@ -1,107 +1,219 @@
 Technical Architecture Spec
+Version: v0.2 (MVP)
+Last updated: June 16, 2026
 
-System Overview:
-	Frontend → API → Parsing → Validation Engine → Hint Engine → Response
+================================================================================
+SYSTEM OVERVIEW
+================================================================================
 
-Tech Stack:
-	Frontend
-		Next.js
-		Tailwind
-		KaTeX (initially)
-	
-	Backend
-		Python
-		FastAPI
-	
-	Math Engine
-		SymPy
-		
-	Database 
-		PostgreSQL
-		
-System Components
-	
-	Frontend Module
-		input UI
-		step submission
-		rendering math
-		displaying hints
-		
-	API Layer (FastAPI)
-		request routing
-		session management
-		validation endpoints
-	
-	Problem Session Manager
-		track attempts
-		store steps
-		manage state
+Frontend → FastAPI API → Session Manager → Parsing → Normalization →
+Comparison → Error Classification → Hint Engine → Response
 
-	Step Parsing Layer
-		convert input → symbolic form
-		normalize expressions
+Per-request pipeline (backend/main.py):
 
-	Step Validation Engine (CORE)
-		compare step transitions
-		detect invalid transformations
-		return error type + location
-		
-	Error Classification Layer
-		categorize mistakes into taxonomy
+	raw student string (^ for exponents, e.g. x^2 — not **)
+	  → parser()           pre-process and sympify
+	  → normalize()        expand, collect, simplify
+	  → comparison()       equivalence check + structural diff
+	  → classify_error()   deterministic rule-based taxonomy
+	  → generate_hint()    error_type → hint string
+	  → JSON response
 
-	Hint Engine
-		generate contextual hints
-		based on:
-			error type
-			equation state
-			attempt history
-			
-	Database Layer
-		schema definition
-		storage of attempts, problems, users
+Note: solve(), integrate(), and diff() are not used on the MVP validation path.
 
-Data Flow
+================================================================================
+TECH STACK
+================================================================================
+
+Frontend (primary):
+	vanilla HTML / CSS / JavaScript in frontend/
+
+Frontend (legacy):
+	Next.js, TypeScript, Tailwind CSS in app/
+
+Math rendering:
+	plain text today; KaTeX planned
+
+Backend:
+	Python, FastAPI
+
+Math engine:
+	SymPy (deterministic, rule-based)
+
+Database:
+	PostgreSQL via SQLAlchemy
+
+================================================================================
+SYSTEM COMPONENTS
+================================================================================
+
+Frontend Module
+	input UI, step submission, hint display, session flow
+
+API Layer (FastAPI)
+	request routing, session endpoints, validation endpoints
+
+Problem Session Manager
+	track attempts, store steps, manage hint level and session state
+
+Step Parsing Layer
+	convert input to symbolic form, normalize expressions
+
+Validation Engine (core)
+	compare successive steps, verify transformation validity, detect first
+	incorrect step
+
+Error Classification Layer
+	categorize mistakes into a structured taxonomy
+
+Hint Engine
+	produce contextual hints; escalate after MAX_ATTEMPTS_BEFORE_ESCALATION (3);
+	append solution after MAX_ATTEMPTS_BEFORE_REVEAL (5)
+
+Database Layer
+	persist problems, sessions, attempts, and wrong-answer benchmarks
+
+================================================================================
+DATA FLOW
+================================================================================
+
 	user submits step
-	frontend sends API request
-	backend loads session
+	frontend sends API request (POST /submit-step)
+	backend loads session from PostgreSQL
 	parser converts expression
-	validator checks correctness
-	classifier assigns error type
-	hint engine responds
+	normalizer prepares comparable form
+	comparison checks equivalence
+	classifier assigns error type (if wrong)
+	hint engine builds response
 	response returned to frontend
-	
-Data Models
-	Users: name, user_id, email, grade?, problem_solve_count, signup_date
-	Problems: type, problem_id, date, time, guess_count
-	Attempts: attempt_id, problem_id, count, success_bool, error_count
-	Sessions: session_id, start_time, end_time, error_count, 
 
-Core Algorithms
-	The application will look at its code and compare it to its training database of existing code to identify problems it was similar to. It will then identify what step this problem is in and solve the baseline problem up to where the user is currently at. If ANY step the user makes is wrong, the application will notably point this out and then give the set of solutions up to this point. It will use the PEMDAS(Parenthesis, Exponents, Multiplication-Division, Addition-Subtraction) series of steps to solve for the requested(or implied) variables, and will subsequently validate it by substituting the derived value of the variable back into the original equation. However, it will only give the next step; rather than revealing the whole problem at once. At the end it will give the answer and/or validate what the user given solution:if it exists works. Additionally, the problem and its correct solution will get uploaded into the training set for future learning.
-	
-Evaluation Framework
-	metrics:
-		first-error accuracy: 100%
-		classification accuracy: 80%
-		hint usefulness: 75%
-		final answer: 80%
-		
-API Design
-	POST /submit-step
-	POST /start-session
-	GET /problem/{id}
-	GET /sample-problem
-	
-Risks & Limitations
-	ambiguous math input
-	symbolic equivalence edge cases
-	over-reliance on LLM reasoning
-	misidentification of problem type
-	wrong answer given via hallucination
+================================================================================
+DATA MODELS (PostgreSQL / SQLAlchemy)
+================================================================================
 
-Future Extensions
+Source of truth: backend/db/models.py
+
+problems
+	id              String (PK)
+	expression      Text
+	expected_final  Text
+	difficulty      String (optional)
+	topic           String (optional)
+	created_at      DateTime
+
+problem_wrong_answers
+	id              Integer (PK, autoincrement)
+	problem_id      String (FK → problems.id)
+	wrong_step      Text
+	error_type      String
+	description     Text (optional)
+
+sessions
+	session_id                  String (PK)
+	problem_id                  String (FK → problems.id)
+	attempt_count               Integer
+	incorrect_attempt_count     Integer
+	hint_level                  Integer
+	created_at                  DateTime
+	last_active                 DateTime
+
+attempts
+	id              Integer (PK, autoincrement)
+	session_id      String (FK → sessions.session_id)
+	step            Text
+	expected        Text
+	is_equivalent   Boolean
+	error_type      String (optional)
+	hint            Text (optional)
+	timestamp       DateTime
+
+users
+	id              Integer (PK, autoincrement)
+	created_at      DateTime
+	(placeholder table; auth not wired in MVP)
+
+================================================================================
+CORE ALGORITHM
+================================================================================
+
+1. Parse the student's algebraic expression (sympify with pre-parse guards).
+2. Normalize via expand → collect → simplify.
+3. Compare the submitted step against the expected step (equivalence + structural diff).
+4. If not equivalent, classify the error with deterministic rules.
+5. Generate a contextual hint from error type and hint level.
+6. Persist attempt and update session counters.
+7. Escalate hints after 3 incorrect math attempts; append expected final
+   answer to hint after 5 incorrect attempts.
+
+Validation follows standard algebraic rules and order of operations (PEMDAS).
+
+================================================================================
+EVALUATION FRAMEWORK
+================================================================================
+
+Target metrics (aligned with Product_Spec.txt):
+
+	first-error detection accuracy:  100%
+	classification accuracy:         >= 70% (product spec); 80% stretch goal
+	hint usefulness:                 >= 75%
+	final answer accuracy:           >= 80%
+
+Run: backend/tests/run_evaluation.py
+Report: reports/evaluation_report.md
+
+================================================================================
+API DESIGN
+================================================================================
+
+GET    /
+	Health check
+
+GET    /sample-problem
+	Random problem; optional query params: difficulty, topic
+
+GET    /problem/{problem_id}
+	Fetch problem by ID
+
+POST   /problem
+	Create problem (admin; no auth yet)
+
+POST   /start-session
+	Create tutoring session for a problem ID or inline expression
+
+POST   /submit-step
+	Validate a student step within a session
+
+GET    /session/{session_id}
+	Session summary and attempt history
+
+DELETE /session/{session_id}
+	Delete session and its attempts
+
+Interactive schemas: http://127.0.0.1:8000/docs when backend is running.
+
+Input notation: use ^ for exponents (x^2), not **.
+
+================================================================================
+RISKS & LIMITATIONS
+================================================================================
+
+	- ambiguous student notation (^ vs **, implicit multiplication)
+	- SymPy symbolic equivalence edge cases
+	- misclassification on structurally similar wrong steps
+	- hint quality bounded by rule-based templates
+	- algebra-only domain
+	- structured input required (no OCR)
+	- limited equation complexity
+
+================================================================================
+FUTURE EXTENSIONS
+================================================================================
+
 	OCR pipeline
 	multi-subject expansion
 	adaptive tutoring system
-	example problem demonstration
-	conceptual reclarification
+	KaTeX math rendering in frontend
+	concept re-teaching workflows
+	personalized learning analytics
+
+See documentation/Current_Plan.txt for phased roadmap.
