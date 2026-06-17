@@ -100,6 +100,8 @@ def init_db() -> None:
     _require_database()
     import db.models  # noqa: F401 — register ORM tables with Base.metadata
 
+    # Dev convenience: create missing tables on startup. Does not alter existing
+    # tables. For schema changes use Alembic (`alembic upgrade head`).
     Base.metadata.create_all(bind=engine)
 
     from db.seed import seed_problems, seed_wrong_answers
