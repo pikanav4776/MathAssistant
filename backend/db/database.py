@@ -37,13 +37,52 @@ def _require_database() -> None:
         )
 
 
+def _is_local_database_url(url: str | None) -> bool:
+    if not url:
+        return False
+    lowered = url.lower()
+    return any(
+        host in lowered
+        for host in ("localhost", "127.0.0.1", "@host.docker.internal")
+    )
+
+
+def _should_use_create_all() -> bool:
+    """Use SQLAlchemy create_all only for local development convenience."""
+    environment = os.environ.get("ENVIRONMENT", "").strip().lower()
+    if environment == "development":
+        return True
+
+    skip_migrations = os.environ.get("SKIP_MIGRATIONS", "").strip().lower()
+    if skip_migrations in {"1", "true", "yes"}:
+        return True
+
+    return _is_local_database_url(_raw_database_url) or _is_local_database_url(
+        DATABASE_URL
+    )
+
+
+def check_db_connection() -> bool:
+    """Return True when the database accepts a simple query."""
+    _require_database()
+    db = SessionLocal()
+    try:
+        db.connection().exec_driver_sql("SELECT 1")
+        return True
+    except Exception:
+        return False
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     _require_database()
     import db.models  # noqa: F401 — register ORM tables with Base.metadata
 
-    # Dev convenience: create missing tables on startup. Does not alter existing
-    # tables. For schema changes use Alembic (`alembic upgrade head`).
-    Base.metadata.create_all(bind=engine)
+    if _should_use_create_all():
+        # Local dev only: create missing tables on startup. Does not alter existing
+        # tables. Production schema is applied via `alembic upgrade head`.
+        Base.metadata.create_all(bind=engine)
 
     from db.seed import seed_problems, seed_wrong_answers
 

@@ -52,10 +52,38 @@ from sympy import (
 from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
 
-from db.database import get_db, init_db
+from db.database import check_db_connection, get_db, init_db
 from db.models import Attempt, Problem, TutoringSession
 
 logger = logging.getLogger(__name__)
+
+
+def _init_sentry() -> None:
+    dsn = os.environ.get("SENTRY_DSN", "").strip()
+    if not dsn:
+        return
+
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    traces_rate_raw = os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1").strip()
+    try:
+        traces_sample_rate = float(traces_rate_raw)
+    except ValueError:
+        traces_sample_rate = 0.1
+
+    sentry_sdk.init(
+        dsn=dsn,
+        integrations=[
+            StarletteIntegration(),
+            FastApiIntegration(),
+        ],
+        traces_sample_rate=traces_sample_rate,
+    )
+
+
+_init_sentry()
 
 T = TypeVar("T") 
 _EXECUTOR = ThreadPoolExecutor(max_workers=2) 
@@ -1040,6 +1068,23 @@ def delete_session(session_id: str, db: OrmSession = Depends(get_db)):
     db.delete(session_row)
     db.commit()
     return {"deleted": True}
+
+
+@app.get("/health")
+def health():
+    """Liveness probe — no database check."""
+    return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready():
+    """Readiness probe — verifies database connectivity."""
+    if not check_db_connection():
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unavailable", "db": "disconnected"},
+        )
+    return {"status": "ok", "db": "connected"}
 
 
 @app.get("/")
