@@ -2,27 +2,7 @@
    CONSTANTS
    ============================================================================= */
 
-const API_BASE = "http://127.0.0.1:8000";
-
-// #region agent log
-function agentLog(hypothesisId, location, message, data) {
-  fetch("http://127.0.0.1:7661/ingest/2e050fce-06e2-4c05-9c7d-8e085271dbc9", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "7ef75b",
-    },
-    body: JSON.stringify({
-      sessionId: "7ef75b",
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-}
-// #endregion
+const API_BASE = window.API_BASE;
 
 const MAX_ATTEMPTS_BEFORE_ESCALATION = 3;
 const MAX_ATTEMPTS_BEFORE_REVEAL = 5;
@@ -344,28 +324,10 @@ async function loadProblem() {
   try {
     const difficulty = els.filterDifficulty.value;
     const topic = els.filterTopic.value;
-    // #region agent log
-    agentLog("D", "app.js:loadProblem", "fetching sample problem", {
-      apiBase: API_BASE,
-      pageOrigin: window.location.origin,
-      difficulty,
-      topic,
-    });
-    // #endregion
     const problem = await api.getSampleProblem(difficulty, topic);
     state.currentProblem = problem;
     renderProblemCard(problem);
-    // #region agent log
-    agentLog("D", "app.js:loadProblem", "problem loaded", { problemId: problem.id });
-    // #endregion
   } catch (err) {
-    // #region agent log
-    agentLog("E", "app.js:loadProblem", "problem fetch failed", {
-      error: err instanceof Error ? err.message : String(err),
-      pageOrigin: window.location.origin,
-      apiBase: API_BASE,
-    });
-    // #endregion
     els.problemError.classList.remove("hidden");
   } finally {
     setProblemLoading(false);

@@ -137,6 +137,25 @@ Latest results: [reports/evaluation_report.md](reports/evaluation_report.md)
 
 ---
 
+## Deploying to Render + Neon
+
+Use the [Render Blueprint](render.yaml) at the repo root to deploy the backend (Python web service) and frontend (static site). PostgreSQL can live on [Neon](https://neon.tech) — copy the connection string into Render.
+
+1. Connect this Git repo in the Render Dashboard and apply the Blueprint.
+2. When prompted, set the secret env vars below (or add them later under each service → **Environment**).
+
+| Service | Variable | Example / notes |
+|---------|----------|-----------------|
+| `mathassistant-api` | `DATABASE_URL` | Neon pooled URL with `?sslmode=require` |
+| `mathassistant-api` | `CORS_ORIGINS` | `https://mathassistant-frontend.onrender.com` (your static site URL) |
+| `mathassistant-frontend` | `API_BASE_URL` | `https://mathassistant-api.onrender.com` (your backend URL, **HTTPS**, no trailing slash) |
+
+After deploy, open the frontend URL. The static-site build writes `frontend/config.js` from `API_BASE_URL`. Local dev is unchanged: `config.js` defaults to `http://127.0.0.1:8000` and `backend/start.ps1` still uses `--reload`.
+
+See comments in [render.yaml](render.yaml) and [frontend/README.md](frontend/README.md) for details.
+
+---
+
 ## Documentation
 
 | Document | Contents |
@@ -154,9 +173,3 @@ Latest results: [reports/evaluation_report.md](reports/evaluation_report.md)
 - Structured text input (no OCR)
 - No automatic problem generation (library + seed data only)
 - Systems limited to modest complexity (see product spec)
-
----
-
-## License
-
-TBD

@@ -32,6 +32,18 @@ Open: **http://localhost:3000**
 
 You should see the subtitle **"Algebra Step Validator"** (not "MathAssistant MVP").
 
+## Production API URL
+
+The backend URL is set in `config.js` (loaded before `app.js`). Local dev defaults to `http://127.0.0.1:8000` via the committed `config.js` — no extra setup.
+
+For deployment, Render's build step (see root [render.yaml](../render.yaml)) overwrites `config.js` from the `API_BASE_URL` env var:
+
+```bash
+echo "window.API_BASE = \"$API_BASE_URL\";" > config.js
+```
+
+Set the backend `CORS_ORIGINS` env var to your frontend URL so the browser can call the API (see `backend/.env.example`). See root [README.md](../README.md) for the full Render + Neon checklist.
+
 ## User flow
 
 1. **Pick a problem** — A random problem loads on startup. Use Difficulty/Topic filters and "Get a Problem" to fetch another.
@@ -62,6 +74,7 @@ You should see the subtitle **"Algebra Step Validator"** (not "MathAssistant MVP
 ```
 frontend/
   index.html   — page shell and three views
+  config.js    — API base URL (override for production)
   style.css    — all styles (CSS variables, mobile-friendly)
   app.js       — state, API layer, and UI logic
   README.md    — this file

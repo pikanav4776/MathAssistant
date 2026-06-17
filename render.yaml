@@ -1,0 +1,38 @@
+# MathAssistant — Render Blueprint
+# https://render.com/docs/blueprint-spec
+#
+# Deploy: connect this repo in the Render Dashboard and apply the Blueprint.
+# You will be prompted for secret env vars (sync: false) on first setup.
+#
+# Required dashboard env vars (set during Blueprint setup or in each service):
+#   Backend (mathassistant-api):
+#     DATABASE_URL  — Neon PostgreSQL connection string (include ?sslmode=require)
+#     CORS_ORIGINS  — Frontend public URL, e.g. https://mathassistant-frontend.onrender.com
+#   Frontend (mathassistant-frontend):
+#     API_BASE_URL  — Backend public HTTPS URL, e.g. https://mathassistant-api.onrender.com
+
+services:
+  - type: web
+    name: mathassistant-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+  - type: web
+    name: mathassistant-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: 'echo "window.API_BASE = \"$API_BASE_URL\";" > config.js'
+    staticPublishPath: .
+    envVars:
+      - key: API_BASE_URL
+        sync: false

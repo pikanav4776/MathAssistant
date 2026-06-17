@@ -1,4 +1,5 @@
-# Start the MathAssistant FastAPI backend on port 8000.
+# Local dev: FastAPI with auto-reload on 127.0.0.1:8000.
+# Production (Render) uses render.yaml: uvicorn main:app --host 0.0.0.0 --port $PORT
 Set-Location $PSScriptRoot
 $venvActivate = Join-Path (Split-Path $PSScriptRoot -Parent) ".venv\Scripts\Activate.ps1"
 if (Test-Path $venvActivate) {
