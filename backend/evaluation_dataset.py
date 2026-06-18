@@ -1,9 +1,12 @@
-"""Labeled evaluation benchmark for MathAssistant (60 problems).
+"""Labeled evaluation benchmark for MathAssistant (72 problems).
 
 Each entry includes the problem expression, correct step, metadata, and
 canonical wrong answers with expected error types for the classifier.
 
 Expressions use ^ (not **), matching StepValidator.parser().
+
+v0.3 adds multi-hop problems (distribute-then-combine, FOIL-then-combine)
+whose ``correct_step`` is the fully simplified final answer.
 """
 
 from __future__ import annotations
@@ -698,6 +701,143 @@ EVALUATION_DATASET: list[dict] = [
         [
             wrong("-3x^2-3x", "sign_error", "Flipped signs on both terms when combining."),
             wrong("2x^2+2x", "arithmetic_error", "Wrong x^2 coefficient after combining like terms."),
+        ],
+    ),
+    # ── MULTI-HOP (12) ───────────────────────────────────────────────
+    entry(
+        "mhop_001",
+        "2(x+3)+4",
+        "2x+10",
+        "easy",
+        "multihop",
+        [
+            wrong("6+4", "distribution_error", "Combined constants only; dropped the distributed x term."),
+            wrong("2x+12", "arithmetic_error", "Distributed correctly but added 6+4 to 12 instead of 10."),
+        ],
+    ),
+    entry(
+        "mhop_002",
+        "3(x-2)+5",
+        "3x-1",
+        "easy",
+        "multihop",
+        [
+            wrong("-1", "distribution_error", "Used only the trailing constant; dropped the x term."),
+            wrong("3x-2", "arithmetic_error", "Distributed correctly but combined -6+5 to -2 instead of -1."),
+        ],
+    ),
+    entry(
+        "mhop_003",
+        "-2(x+1)+3",
+        "1-2x",
+        "medium",
+        "multihop",
+        [
+            wrong("-2x", "distribution_error", "Kept only the variable part after distribution."),
+            wrong("-2x+3", "arithmetic_error", "Distributed correctly but combined -2+3 to 3 on the constant line."),
+        ],
+    ),
+    entry(
+        "mhop_004",
+        "4(2x+1)+2",
+        "8x+6",
+        "medium",
+        "multihop",
+        [
+            wrong("8x", "distribution_error", "Dropped the constant terms after distributing."),
+            wrong("8x+5", "arithmetic_error", "Distributed correctly but combined 4+2 to 5 instead of 6."),
+        ],
+    ),
+    entry(
+        "mhop_005",
+        "5(x+2)-3",
+        "5x+7",
+        "medium",
+        "multihop",
+        [
+            wrong("5x", "distribution_error", "Dropped constants after distributing 5(x+2)."),
+            wrong("5x+8", "arithmetic_error", "Distributed correctly but combined 10-3 to 8 instead of 7."),
+        ],
+    ),
+    entry(
+        "mhop_006",
+        "(x+1)(x+2)+3",
+        "x^2+3x+5",
+        "medium",
+        "multihop",
+        [
+            wrong("x^2+5", "distribution_error", "FOIL expansion missing the middle x terms."),
+            wrong("x^2+3x+6", "arithmetic_error", "Expanded correctly but added trailing 3 to get 6 instead of 5."),
+        ],
+    ),
+    entry(
+        "mhop_007",
+        "(x+2)(x-1)+4",
+        "x^2+x+2",
+        "medium",
+        "multihop",
+        [
+            wrong("x^2+x", "distribution_error", "Expanded the product but dropped the trailing constant work."),
+            wrong("x^2+x+3", "arithmetic_error", "Expanded correctly but combined -2+4 to 3 instead of 2."),
+        ],
+    ),
+    entry(
+        "mhop_008",
+        "(2x+1)(x+3)+2",
+        "2x^2+7x+5",
+        "hard",
+        "multihop",
+        [
+            wrong("2x^2+7x", "distribution_error", "Expanded the product but omitted constant terms."),
+            wrong("2x^2+7x+4", "arithmetic_error", "Expanded correctly but combined 3+2 to 4 instead of 5."),
+        ],
+    ),
+    entry(
+        "mhop_009",
+        "2(x+5)+3(x-1)",
+        "5x+7",
+        "hard",
+        "multihop",
+        [
+            wrong("5x", "distribution_error", "Combined x terms but dropped all constants."),
+            wrong("5x+8", "arithmetic_error", "Distributed both factors but combined 10-3 to 8 instead of 7."),
+        ],
+    ),
+    entry(
+        "mhop_010",
+        "(x-2)(x+5)+1",
+        "x^2+3x-9",
+        "hard",
+        "multihop",
+        [
+            wrong("x^2+3x", "distribution_error", "Expanded the product but dropped constant terms."),
+            wrong("x^2+3x-8", "arithmetic_error", "Expanded correctly but combined -10+1 to -8 instead of -9."),
+        ],
+    ),
+    entry(
+        "mhop_011",
+        "3(2x-1)+4",
+        "6x+1",
+        "medium",
+        "multihop",
+        [
+            wrong("6x", "distribution_error", "Distributed to the x term but dropped constants."),
+            wrong("6x+2", "arithmetic_error", "Distributed correctly but combined -3+4 to 2 instead of 1."),
+        ],
+    ),
+    entry(
+        "mhop_012",
+        "(8x+6x^2+2)(8x^2+22x+19)",
+        "48x^4+196x^3+306x^2+196x+38",
+        "hard",
+        "multihop",
+        [
+            wrong("48x^4+38", "distribution_error", "Multiplied only outer terms; dropped cross terms."),
+            wrong(
+                "48x^4+196x^3+300x^2+196x+38",
+                "arithmetic_error",
+                "Distributed all terms but combined like x^2 coefficients to 300 instead of 306.",
+            ),
         ],
     ),
 ]

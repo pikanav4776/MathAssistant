@@ -12,14 +12,21 @@ distribution error, sign error, or arithmetic error — and
 route that classification to the hint engine, which returns 
 targeted feedback. This evaluation measures how accurately 
 the classifier identifies the correct error type across a 
-controlled dataset of 120 labeled wrong-answer entries, 
-covering all three error categories across four algebraic 
+controlled dataset of 144 labeled wrong-answer entries, 
+covering all three error categories across five algebraic 
 topics and three difficulty levels.
+
+v0.3 extends the product with multi-hop canonical solution 
+paths (distribute-then-combine, FOIL-then-combine). The 
+classifier benchmark still compares each wrong step against 
+the fully simplified final answer, which remains the 
+session completion target.
 
 ## Dataset
 
-- Total problems: 60
-- Total evaluation entries: 120 (2 wrong answers per problem)
+- Total problems: 72
+- Total evaluation entries: 144 (2 wrong answers per problem)
+- Multi-hop problems (v0.3): 12
 
 Distribution table:
 
@@ -29,7 +36,8 @@ Distribution table:
 | simplification   |  7   |   9    |  4   |  20   |
 | double_expansion |  3   |   4    |  3   |  10   |
 | linear_steps     |  3   |   3    |  4   |  10   |
-| **Total**        | 20   |  25    | 15   |  60   |
+| multihop         |  2   |   6    |  4   |  12   |
+| **Total**        | 22   |  31    | 19   |  72   |
 
 Wrong answers were generated using Claude (Anthropic) 
 following the distribution specification in the Phase 9 
@@ -139,7 +147,7 @@ all terms, which may accidentally surface the sign mistake.
 
 ### Parse Success
 
-Parse success rate: 120/120 (100.0%)
+Parse success rate: 144/144 (100.0%)
 Parse failures: None
 
 ### Confusion Matrix
@@ -147,9 +155,9 @@ Parse failures: None
 ```
        Predicted
               dist   sign  arith  unknown
-Actual  dist |   30 |    0 |    0 |    0 |
+Actual  dist |   42 |    0 |    0 |    0 |
 Actual  sign |    0 |   30 |    0 |    0 |
-Actual  arith|    0 |    0 |   60 |    0 |
+Actual  arith|    0 |    0 |   72 |    0 |
 ```
 
 ### Per-Class Metrics
@@ -160,17 +168,22 @@ Actual  arith|    0 |    0 |   60 |    0 |
 | sign_error          | 1.00      | 1.00   | 1.00 |
 | arithmetic_error    | 1.00      | 1.00   | 1.00 |
 
+The 12 v0.3 multihop problems contribute 24 additional 
+wrong-answer cases (distribution + arithmetic only). All 
+classify correctly against each problem's final simplified 
+answer.
+
 ### Macro F1
 
 1.00
 
 ### Overall Accuracy
 
-120/120 (100.0%)
+144/144 (100.0%)
 
 ### Unknown Rate
 
-0/120 (0.0%)
+0/144 (0.0%)
 
 ## Interpretation
 
@@ -198,13 +211,12 @@ not missing, it is sign-flipped.
 
 After the fix, all three error types achieve perfect 
 precision, recall, and F1. The 0% unknown rate confirms the 
-rule set has complete coverage over the synthetic dataset. 
-The most notable result is that arithmetic_error, despite 
-comprising 50% of the dataset (60/120 entries) against 25% 
-each for distribution and sign errors, did not inflate 
-overall accuracy at the expense of minority class 
-performance — all three classes score equally, which is 
-what Macro F1 is designed to verify.
+rule set has complete coverage over the synthetic dataset, 
+including the v0.3 multihop additions. The most notable result 
+is that arithmetic_error, despite comprising roughly half of 
+the dataset, did not inflate overall accuracy at the expense 
+of minority class performance — all three classes score 
+equally, which is what Macro F1 is designed to verify.
 
 ## Limitations
 
@@ -226,17 +238,21 @@ what Macro F1 is designed to verify.
 
 MathAssistant's deterministic rule-based classifier achieves 
 a Macro F1 of 1.00 across all three error types on a 
-120-entry synthetic evaluation dataset, with a 100% parse 
-success rate and 0% unknown rate. The system reliably 
-distinguishes distribution errors (missing terms after 
-expansion), sign errors (flipped coefficients), and 
-arithmetic errors (wrong coefficient values) across four 
-algebraic topics and three difficulty levels. One classifier 
-rule gap was identified and fixed during evaluation — the 
-_is_distribution_error() method's handling of polynomial 
-expressions with matching monomial bases. To improve the 
-system further, the next steps would be collecting real 
-student submission data to validate synthetic dataset 
-assumptions, expanding the rule set to cover higher-degree 
-polynomial topics, and integrating session persistence to 
-enable longitudinal analysis of student error patterns.
+144-entry synthetic evaluation dataset (72 problems), with a 
+100% parse success rate and 0% unknown rate. The system 
+reliably distinguishes distribution errors (missing terms 
+after expansion), sign errors (flipped coefficients), and 
+arithmetic errors (wrong coefficient values) across five 
+algebraic topics and three difficulty levels. v0.3 adds 
+multi-hop session validation (tested separately in 
+test_v03_api.py and test_v03_integration.py) while keeping 
+classifier benchmark quality at 100%. One classifier rule 
+gap was identified and fixed during the original evaluation 
+— the _is_distribution_error() method's handling of 
+polynomial expressions with matching monomial bases. To 
+improve the system further, the next steps would be 
+collecting real student submission data to validate synthetic 
+dataset assumptions, expanding the rule set to cover 
+higher-degree polynomial topics, and integrating session 
+persistence to enable longitudinal analysis of student 
+error patterns.

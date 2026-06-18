@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="MathAssistant", version="0.2.1", lifespan=lifespan)
+app = FastAPI(title="MathAssistant", version="0.3.0", lifespan=lifespan)
 
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
@@ -1529,4 +1529,4 @@ def ready():
 
 @app.get("/")
 def root():
-    return {"status": "MathAssistant backend is running!", "version": "0.2.1"}
+    return {"status": "MathAssistant backend is running!", "version": "0.3.0"}

@@ -1,14 +1,14 @@
 # MathAssistant
 
-**Version:** v0.2 (MVP)
+**Version:** v0.3 (Algebra Co-Solving)
 
 ## Summary
 
-Algebra step-validation tutor — guides students with hints instead of giving full answers.
+Algebra step-validation tutor — guides students through multi-step simplification with hints instead of giving full answers.
 
-MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreSQL). Students submit one algebraic step at a time; the backend parses, normalizes, compares, classifies errors, and returns contextual hints. It is **not** a chatbot or LLM answer engine in the current MVP.
+MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreSQL). Students submit one algebraic step at a time; the backend parses, normalizes, compares against the canonical solution path, classifies errors, and returns contextual hints. Skip-ahead is accepted when a later canonical step is submitted. It is **not** a chatbot or LLM answer engine.
 
-**MVP scope:** algebra only, structured text input (no OCR), seed problem library (no auto-generation). See [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for full product scope and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design.
+**v0.3 scope:** algebra co-solving with single- and multi-hop canonical paths (distribute-then-combine, FOIL-then-combine), structured text input (no OCR), seed problem library (no auto-generation). See [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for full product scope and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design.
 
 ---
 
@@ -73,7 +73,7 @@ cd frontend
 .\start.ps1
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You should see **"Algebra Step Validator"**.
+Open [http://localhost:3000](http://localhost:3000). You should see **"Algebra Co-Solving (v0.3)"**.
 
 > Do **not** open `frontend/index.html` via `file://` — the browser will block API calls.
 > Do **not** use port 8000 for the frontend; that is the backend.
@@ -93,15 +93,15 @@ See [frontend/README.md](frontend/README.md) for the full user flow.
 
 ### Backend
 
-Each student step flows through a deterministic validation pipeline:
+Each student step flows through a deterministic validation pipeline against the session's current canonical line and solution path:
 
 ```text
 Student step (^ for exponents, e.g. x^2)
-  → parse → normalize → compare to expected
+  → parse → normalize → compare to expected (or skip-ahead target)
   → classify error (if wrong) → generate hint → JSON response
 ```
 
-After **3** incorrect math attempts, hints escalate. After **5**, the expected final answer may be appended to the hint. Input notation uses `^` for exponents (`x^2`), not `**`.
+Multi-hop problems advance through intermediate canonical steps (e.g. `2(x+3)+4` → `2x+6+4` → `2x+10`). After **3** incorrect math attempts, hints escalate. After **5**, the expected final answer may be appended to the hint. Input notation uses `^` for exponents (`x^2`), not `**`.
 
 ### Frontend
 

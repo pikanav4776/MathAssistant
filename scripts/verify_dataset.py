@@ -12,7 +12,7 @@ from evaluation_dataset import EVALUATION_DATASET  # noqa: E402
 
 ERROR_TYPES = ("distribution_error", "sign_error", "arithmetic_error")
 DIFFICULTIES = ("easy", "medium", "hard")
-TOPICS = ("distribution", "simplification", "double_expansion", "linear_steps")
+TOPICS = ("distribution", "simplification", "double_expansion", "linear_steps", "multihop")
 
 
 def _pct(count: int, total: int) -> int:

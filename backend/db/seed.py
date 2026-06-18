@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from db.models import Problem, ProblemWrongAnswer, SolutionPath, SolutionStep
 from evaluation_dataset import EVALUATION_DATASET
+from step_engine import build_solution_plan
 
 PREDEFINED_PROBLEMS: list[dict[str, str]] = [
     {
@@ -69,10 +70,10 @@ def seed_solution_paths(db: Session) -> None:
 
 
 def seed_solution_steps(db: Session) -> None:
-    """Insert single-hop canonical step for each default path; idempotent."""
+    """Insert canonical solution steps from step_engine for each default path; idempotent."""
     for problem in EVALUATION_DATASET:
         problem_id = problem["problem_id"]
-        correct_step = problem["correct_step"]
+        plan = build_solution_plan(problem["expression"])
         path = (
             db.query(SolutionPath)
             .filter_by(problem_id=problem_id, is_primary=True)
@@ -80,16 +81,17 @@ def seed_solution_steps(db: Session) -> None:
         )
         if path is None:
             continue
-        step = (
-            db.query(SolutionStep)
-            .filter_by(path_id=path.sol_path_id, step_order=1)
-            .first()
-        )
-        if step is None:
-            db.add(
-                SolutionStep(
-                    path_id=path.sol_path_id,
-                    step_order=1,
-                    sol_step_expression=correct_step,
-                )
+        for order, step_expr in enumerate(plan.steps, start=1):
+            step = (
+                db.query(SolutionStep)
+                .filter_by(path_id=path.sol_path_id, step_order=order)
+                .first()
             )
+            if step is None:
+                db.add(
+                    SolutionStep(
+                        path_id=path.sol_path_id,
+                        step_order=order,
+                        sol_step_expression=step_expr,
+                    )
+                )

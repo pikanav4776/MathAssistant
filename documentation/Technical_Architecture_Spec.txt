@@ -1,17 +1,18 @@
 Technical Architecture Spec
-Version: v0.2 (MVP)
-Last updated: June 17, 2026
+Version: v0.3 (Algebra Co-Solving)
+Last updated: June 18, 2026
 
 ================================================================================
 SYSTEM OVERVIEW
 ================================================================================
 
-Frontend → FastAPI API → Session Manager → Parsing → Normalization →
-Comparison → Error Classification → Hint Engine → Response
+Frontend → FastAPI API → Session Manager → Step Engine (canonical path) →
+Parsing → Normalization → Comparison → Error Classification → Hint Engine → Response
 
 Per-request pipeline (backend/main.py):
 
 	raw student string (^ for exponents, e.g. x^2 — not **)
+	  → step_engine.build_solution_plan()  canonical multi-hop path (on session start)
 	  → parser()           pre-process and sympify
 	  → normalize()        expand, collect, simplify
 	  → comparison()       equivalence check + structural diff
@@ -19,7 +20,11 @@ Per-request pipeline (backend/main.py):
 	  → generate_hint()    error_type → hint string
 	  → JSON response
 
-Note: solve(), integrate(), and diff() are not used on the MVP validation path.
+v0.3 session flow validates each submission against the immediate expected
+canonical step, with skip-ahead when a later path step matches. Factor reorder
+on foil products is rejected as term_reorder without advancing the session.
+
+Note: solve(), integrate(), and diff() are not used on the validation path.
 
 ================================================================================
 TECH STACK
@@ -55,6 +60,8 @@ PROJECT STRUCTURE
 MathAssistant/
 	backend/           FastAPI app, SymPy engine, PostgreSQL models
 	  main.py          API + validation pipeline
+	  step_engine.py   canonical single/multi-hop solution plans (v0.3)
+	  expression_preprocess.py  keyboard input normalization
 	  db/              SQLAlchemy models and seed data
 	  tests/           pytest suite and evaluation runners
 	frontend/          Primary UI (HTML/CSS/JS)
@@ -83,7 +90,12 @@ API Layer (FastAPI)
 	request routing, session endpoints, validation endpoints
 
 Problem Session Manager
-	track attempts, store steps, manage hint level and session state
+	track attempts, store steps, manage hint level, current_expression,
+	current_step_id, and completed flag (v0.3)
+
+Step Engine (v0.3)
+	build_solution_plan() — detect topic, emit canonical intermediate steps
+	for distribute+constant sums and FOIL products before final combine
 
 Step Parsing Layer
 	convert input to symbolic form, normalize expressions
@@ -143,8 +155,24 @@ sessions
 	attempt_count               Integer
 	incorrect_attempt_count     Integer
 	hint_level                  Integer
+	current_step_id             Integer (FK → solution_steps.sol_step_id, optional)
+	current_expression          Text (v0.3 — line student is simplifying from)
+	completed                   Boolean (v0.3)
 	created_at                  DateTime
 	last_active                 DateTime
+
+solution_paths
+	sol_path_id     Integer (PK)
+	problem_id      String (FK → problems.id)
+	sol_path_name   String
+	is_primary      Boolean
+
+solution_steps
+	sol_step_id             Integer (PK)
+	path_id                 Integer (FK → solution_paths.sol_path_id)
+	step_order              Integer
+	sol_step_expression     Text
+	hint_template           Text (optional)
 
 attempts
 	id              Integer (PK, autoincrement)
@@ -154,6 +182,7 @@ attempts
 	is_equivalent   Boolean
 	error_type      String (optional)
 	hint            Text (optional)
+	step_order      Integer (v0.3 — which path step the attempt targeted)
 	timestamp       DateTime
 
 users
@@ -167,10 +196,12 @@ CORE ALGORITHM
 
 1. Parse the student's algebraic expression (sympify with pre-parse guards).
 2. Normalize via expand → collect → simplify.
-3. Compare the submitted step against the expected step (equivalence + structural diff).
-4. If not equivalent, classify the error with deterministic rules.
+3. Compare the submitted step against the immediate expected canonical step
+   (or accept skip-ahead to a later path step).
+4. If not equivalent, classify the error with deterministic rules
+   (including no_progress and term_reorder in v0.3).
 5. Generate a contextual hint from error type and hint level.
-6. Persist attempt and update session counters.
+6. Persist attempt and update session counters and current_expression.
 7. Escalate hints after 3 incorrect math attempts; append expected final
    answer to hint after 5 incorrect attempts.
 
@@ -218,10 +249,12 @@ POST   /problem
 	Create problem (admin; no auth yet)
 
 POST   /start-session
-	Create tutoring session for a problem ID or inline expression
+	Create tutoring session for a problem ID or inline expression; returns
+	step_count from the canonical solution path (v0.3)
 
 POST   /submit-step
-	Validate a student step within a session
+	Validate a student step within a session; supports multi-hop progression,
+	skip-ahead, no_progress, and term_reorder handling (v0.3)
 
 GET    /session/{session_id}
 	Session summary and attempt history
@@ -256,8 +289,9 @@ Target metrics (aligned with Product_Spec.txt):
 	final answer accuracy:           >= 80%
 
 The test suite covers the SymPy validation pipeline (parser, normalize, compare,
-hints). It does not require a live database today, but CI provisions Postgres so
-future DB-backed tests can run without workflow changes.
+hints), step_engine canonical paths, v0.3 API/session integration
+(test_v03_api.py, test_v03_integration.py). It does not require a live database
+for most unit tests; CI provisions Postgres so DB-backed tests can run.
 
 ================================================================================
 CI/CD
@@ -365,7 +399,7 @@ Schema on deploy:
 	- Backend readiness: https://<mathassistant-api-host>/ready — expect db connected.
 	- Root: https://<mathassistant-api-host>/ — still returns version JSON.
 	- API docs: https://<mathassistant-api-host>/docs should load.
-	- Frontend: https://<mathassistant-frontend-host>/ — expect Algebra Step Validator.
+	- Frontend: https://<mathassistant-frontend-host>/ — expect Algebra Co-Solving (v0.3).
 	- Submit a sample step; browser should call API without CORS errors.
 	- If SENTRY_DSN is set, trigger a test error or use Sentry's "Send test event".
 
