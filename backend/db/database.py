@@ -84,11 +84,18 @@ def init_db() -> None:
         # tables. Production schema is applied via `alembic upgrade head`.
         Base.metadata.create_all(bind=engine)
 
-    from db.seed import seed_problems, seed_wrong_answers
+    from db.seed import (
+        seed_problems,
+        seed_solution_paths,
+        seed_solution_steps,
+        seed_wrong_answers,
+    )
 
     db = SessionLocal()
     try:
         seed_problems(db)
+        seed_solution_paths(db)
+        seed_solution_steps(db)
         seed_wrong_answers(db)
         db.commit()
     except Exception:

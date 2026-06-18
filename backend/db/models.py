@@ -173,6 +173,10 @@ class TutoringSession(Base):
     current_step_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("solution_steps.sol_step_id"), nullable=True
     )
+    current_expression: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
 
     problem: Mapped[Problem] = relationship(back_populates="sessions")
     user: Mapped[User | None] = relationship(back_populates="sessions")
@@ -197,6 +201,7 @@ class Attempt(Base):
     is_equivalent: Mapped[bool] = mapped_column(Boolean, nullable=False)
     error_type: Mapped[str | None] = mapped_column(String, nullable=True)
     hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    step_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     timestamp: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

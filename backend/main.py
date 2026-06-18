@@ -32,6 +32,7 @@ import logging
 import os
 import re
 import uuid
+from hashlib import sha256
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -53,7 +54,8 @@ from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
 
 from db.database import check_db_connection, get_db, init_db
-from db.models import Attempt, Problem, TutoringSession
+from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession
+from step_engine import UnsupportedProblemError, build_solution_plan
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ app.add_middleware(
 class StepInput(BaseModel):
     session_id: str
     step: str
-    expected: str
+    expected: str | None = None
 
 
 class StepResult(BaseModel):
@@ -155,10 +157,15 @@ class StepResult(BaseModel):
     structural_diff: dict | None
     error_classification: dict | None
     hint: str
+    step_index: int | None = None
+    step_count: int | None = None
+    is_final_step: bool | None = None
+    session_complete: bool | None = None
+    current_expression: str | None = None
 
 
 class StartSessionRequest(BaseModel):
-    problem_id: str
+    problem_id: str | None = None
     problem_expression: str | None = None
     expected_final: str | None = None
 
@@ -169,6 +176,10 @@ class StartSessionResponse(BaseModel):
     problem_expression: str
     expected_final: str
     message: str
+    subject: str | None = None
+    topic: str | None = None
+    current_expression: str | None = None
+    step_count: int | None = None
 
 
 class ProblemResponse(BaseModel):
@@ -194,6 +205,8 @@ class SessionSummary(BaseModel):
     problem_expression: str
     attempt_count: int
     hint_level: int
+    completed: bool | None = None
+    current_expression: str | None = None
     attempt_history: list[dict]
     created_at: datetime
     last_active: datetime
@@ -411,6 +424,10 @@ _HINT_LEVELS: dict[str, dict[int, str]] = {
     "unknown": {
         1: "Compare your step to the previous line term by term.",
         2: "Re-check each term and coefficient; one part of the expression does not match.",
+    },
+    "no_progress": {
+        1: "You submitted the same expression. Apply the next algebraic step.",
+        2: "Try transforming the current line before submitting again.",
     },
 }
 
@@ -691,12 +708,13 @@ _validator = StepValidator()
 
 
 def _handle_step_validation(data: StepInput) -> StepResult:
+    expected = data.expected or ""
     try:
-        result = _validator.validate(data.step, data.expected)
+        result = _validator.validate(data.step, expected)
         return StepResult(
             session_id=data.session_id,
             received_step=data.step,
-            expected_step=data.expected,
+            expected_step=expected,
             **result,
         )
     except MathInputError as exc:
@@ -704,7 +722,7 @@ def _handle_step_validation(data: StepInput) -> StepResult:
         return StepResult(
             session_id=data.session_id,
             received_step=data.step,
-            expected_step=data.expected,
+            expected_step=expected,
             is_equivalent=False,
             structural_diff=None,
             error_classification=_classification_for_input_error(exc),
@@ -715,7 +733,7 @@ def _handle_step_validation(data: StepInput) -> StepResult:
         return StepResult(
             session_id=data.session_id,
             received_step=data.step,
-            expected_step=data.expected,
+            expected_step=expected,
             is_equivalent=False,
             structural_diff=None,
             error_classification={
@@ -766,6 +784,64 @@ def _problem_to_response(row: Problem) -> ProblemResponse:
         topic=row.topic,
         created_at=row.created_at,
     )
+
+
+def _problem_id_from_expression(expression: str) -> str:
+    digest = sha256(expression.encode("utf-8")).hexdigest()[:16]
+    return f"user_{digest}"
+
+
+def _get_primary_solution_steps(db: OrmSession, problem_id: str) -> list[SolutionStep]:
+    path = (
+        db.query(SolutionPath)
+        .filter_by(problem_id=problem_id, is_primary=True)
+        .first()
+    )
+    if path is None:
+        return []
+    return (
+        db.query(SolutionStep)
+        .filter_by(path_id=path.sol_path_id)
+        .order_by(SolutionStep.step_order.asc())
+        .all()
+    )
+
+
+def _ensure_solution_steps(
+    db: OrmSession,
+    problem_id: str,
+    steps: list[str],
+) -> list[SolutionStep]:
+    path = (
+        db.query(SolutionPath)
+        .filter_by(problem_id=problem_id, is_primary=True)
+        .first()
+    )
+    if path is None:
+        path = SolutionPath(problem_id=problem_id, sol_path_name="default", is_primary=True)
+        db.add(path)
+        db.flush()
+
+    for index, step in enumerate(steps, start=1):
+        row = (
+            db.query(SolutionStep)
+            .filter_by(path_id=path.sol_path_id, step_order=index)
+            .first()
+        )
+        if row is None:
+            db.add(
+                SolutionStep(
+                    path_id=path.sol_path_id,
+                    step_order=index,
+                    sol_step_expression=step,
+                )
+            )
+    db.flush()
+    return _get_primary_solution_steps(db, problem_id)
+
+
+def _expression_equivalent(a: str, b: str) -> bool:
+    return _validator.comparison(a, b)["is_equivalent"]
 
 
 @app.get("/problem/{problem_id}", response_model=ProblemResponse)
@@ -863,74 +939,103 @@ def create_problem(data: ProblemCreateRequest, db: OrmSession = Depends(get_db))
 
 @app.post("/start-session", response_model=StartSessionResponse)
 def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
-    expr_provided = data.problem_expression is not None
-    final_provided = data.expected_final is not None
-
-    if expr_provided != final_provided:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "Provide both expression and expected_final together, or "
-                "neither (to use a pre-existing problem by ID)."
-            },
-        )
-
     try:
         session_id = str(uuid.uuid4())
         now = datetime.utcnow()
+        subject = "algebra"
 
-        if expr_provided and final_provided:
-            if not data.problem_expression.strip() or not data.expected_final.strip():
+        if data.problem_expression is not None:
+            if not data.problem_expression.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail={"error": "problem_expression must be a non-empty string."},
+                )
+            try:
+                plan = build_solution_plan(data.problem_expression)
+            except UnsupportedProblemError as exc:
                 raise HTTPException(
                     status_code=422,
                     detail={
-                        "error": "expression and expected_final must be non-empty strings."
+                        "error": "unsupported_problem",
+                        "message": str(exc),
+                        "supported_topics": [
+                            "distribution",
+                            "foil",
+                            "simplification",
+                            "linear_steps",
+                        ],
                     },
-                )
-            problem_expression = data.problem_expression
-            expected_final = data.expected_final
+                ) from exc
+
+            problem_expression = data.problem_expression.strip()
+            expected_final = plan.final_answer
+            topic = plan.topic
+            problem_id = data.problem_id or _problem_id_from_expression(problem_expression)
             stmt = (
                 insert(Problem)
                 .values(
-                    id=data.problem_id,
+                    id=problem_id,
                     expression=problem_expression,
                     expected_final=expected_final,
+                    topic=topic,
                 )
-                .on_conflict_do_nothing()
+                .on_conflict_do_update(
+                    index_elements=["id"],
+                    set_={
+                        "expression": problem_expression,
+                        "expected_final": expected_final,
+                        "topic": topic,
+                    },
+                )
             )
             db.execute(stmt)
+            steps = _ensure_solution_steps(db, problem_id, plan.steps)
         else:
+            if not data.problem_id:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"error": "Provide either problem_expression or problem_id."},
+                )
             problem_row = db.query(Problem).filter_by(id=data.problem_id).first()
             if problem_row is None:
                 raise HTTPException(
                     status_code=404,
-                    detail={
-                        "error": "Problem not found. Provide expression and expected_final, "
-                        "or use GET /sample-problem to find a valid problem ID."
-                    },
+                    detail={"error": "Problem not found."},
                 )
             problem_expression = problem_row.expression
             expected_final = problem_row.expected_final
+            topic = problem_row.topic
+            problem_id = problem_row.id
+            steps = _get_primary_solution_steps(db, problem_id)
+            if not steps:
+                steps = _ensure_solution_steps(db, problem_id, [expected_final])
 
         db.add(
             TutoringSession(
                 session_id=session_id,
-                problem_id=data.problem_id,
+                problem_id=problem_id,
                 attempt_count=0,
                 incorrect_attempt_count=0,
                 hint_level=1,
                 created_at=now,
                 last_active=now,
+                current_step_id=None,
+                current_expression=problem_expression,
+                completed=False,
             )
         )
         db.commit()
 
         return StartSessionResponse(
             session_id=session_id,
-            problem_id=data.problem_id,
+            problem_id=problem_id,
             problem_expression=problem_expression,
             expected_final=expected_final,
-            message="Session started.",
+            message="Session started. Submit your first step.",
+            subject=subject,
+            topic=topic,
+            current_expression=problem_expression,
+            step_count=len(steps),
         )
     except HTTPException:
         raise
@@ -939,7 +1044,7 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
         logger.exception("Failed to start session")
         return StartSessionResponse(
             session_id="",
-            problem_id=data.problem_id,
+            problem_id=data.problem_id or "",
             problem_expression=data.problem_expression or "",
             expected_final=data.expected_final or "",
             message="Something went wrong while starting the session. Please try again.",
@@ -955,7 +1060,7 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
         return StepResult(
             session_id=data.session_id,
             received_step=data.step,
-            expected_step=data.expected,
+            expected_step=data.expected or "",
             is_equivalent=False,
             structural_diff=None,
             error_classification=None,
@@ -967,14 +1072,94 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
         return StepResult(
             session_id=data.session_id,
             received_step=data.step,
-            expected_step=data.expected,
+            expected_step=data.expected or "",
             is_equivalent=False,
             structural_diff=None,
             error_classification=None,
             hint="Session not found. Please start a new session.",
         )
+    steps = _get_primary_solution_steps(db, session_row.problem_id)
+    if not steps:
+        steps = _ensure_solution_steps(db, session_row.problem_id, [problem_row.expected_final])
+    step_count = len(steps)
 
-    result = _handle_step_validation(data)
+    if session_row.completed:
+        return StepResult(
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=problem_row.expected_final,
+            is_equivalent=True,
+            structural_diff=None,
+            error_classification=None,
+            hint="Session already completed.",
+            step_index=step_count,
+            step_count=step_count,
+            is_final_step=True,
+            session_complete=True,
+            current_expression=session_row.current_expression,
+        )
+
+    if session_row.current_step_id is None:
+        current_index = 0
+    else:
+        current_index = 0
+        for idx, row in enumerate(steps):
+            if row.sol_step_id == session_row.current_step_id:
+                current_index = idx
+                break
+
+    expected_step = (
+        data.expected
+        if data.expected is not None
+        else steps[current_index].sol_step_expression
+    )
+
+    # no-progress submission: same expression as the current line
+    try:
+        if _expression_equivalent(data.step, session_row.current_expression):
+            hint = generate_hint("no_progress", hint_level=session_row.hint_level)
+            result = StepResult(
+                session_id=data.session_id,
+                received_step=data.step,
+                expected_step=expected_step,
+                is_equivalent=False,
+                structural_diff=None,
+                error_classification={
+                    "error_type": "no_progress",
+                    "confidence": "high",
+                    "reason": "Submission matches the current expression.",
+                },
+                hint=hint,
+                step_index=current_index + 1,
+                step_count=step_count,
+                is_final_step=False,
+                session_complete=False,
+                current_expression=session_row.current_expression,
+            )
+            attempt_ts = datetime.utcnow()  
+            db.add(
+                Attempt(
+                    session_id=session_row.session_id,
+                    step=data.step,
+                    expected=expected_step,
+                    is_equivalent=False,
+                    error_type="no_progress",
+                    hint=hint,
+                    step_order=current_index + 1,
+                    timestamp=attempt_ts,
+                )
+            )
+            session_row.attempt_count = session_row.attempt_count + 1
+            session_row.last_active = attempt_ts
+            db.commit()
+            return result
+    except MathInputError:
+        # let validator return the user-safe parsing classification below
+        pass
+
+    result = _handle_step_validation(
+        StepInput(session_id=data.session_id, step=data.step, expected=expected_step)
+    )
 
     session_obj = SessionState(
         session_id=session_row.session_id,
@@ -983,7 +1168,21 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
         expected_final=problem_row.expected_final,
         attempt_count=session_row.attempt_count + 1,
         incorrect_attempt_count=session_row.incorrect_attempt_count
-        + (0 if result.is_equivalent else 1),
+        + (
+            0
+            if result.is_equivalent
+            or (result.error_classification and result.error_classification["error_type"] in {
+                "invalid_input",
+                "malformed_syntax",
+                "invalid_format",
+                "division_by_zero",
+                "undefined_math",
+                "undefined_symbol",
+                "evaluation_timeout",
+                "engine_error",
+            })
+            else 1
+        ),
         hint_level=session_row.hint_level,
         attempt_history=[],
     )
@@ -994,12 +1193,24 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
     session_row.hint_level = session_obj.hint_level
     session_row.last_active = datetime.utcnow()
 
+    is_final_step = current_index == (step_count - 1)
+    session_complete = False
+    if result.is_equivalent:
+        session_row.current_expression = data.step
+        if is_final_step:
+            session_row.completed = True
+            session_complete = True
+            session_row.current_step_id = steps[current_index].sol_step_id
+        else:
+            next_row = steps[current_index + 1]
+            session_row.current_step_id = next_row.sol_step_id
+
     attempt_ts = datetime.utcnow()
     db.add(
         Attempt(
             session_id=session_row.session_id,
             step=data.step,
-            expected=data.expected,
+            expected=expected_step,
             is_equivalent=result.is_equivalent,
             error_type=(
                 result.error_classification.get("error_type")
@@ -1007,12 +1218,20 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
                 else None
             ),
             hint=result.hint,
+            step_order=current_index + 1,
             timestamp=attempt_ts,
         )
     )
     db.commit()
-
-    return result
+    return result.model_copy(
+        update={
+            "step_index": current_index + 1,
+            "step_count": step_count,
+            "is_final_step": is_final_step,
+            "session_complete": session_complete,
+            "current_expression": session_row.current_expression,
+        }
+    )
 
 
 @app.get("/session/{session_id}")
@@ -1036,6 +1255,7 @@ def get_session(session_id: str, db: OrmSession = Depends(get_db)):
         {
             "step": row.step,
             "expected": row.expected,
+            "step_order": row.step_order if hasattr(row, "step_order") else 1,
             "is_equivalent": row.is_equivalent,
             "error_type": row.error_type,
             "hint": row.hint,
@@ -1050,6 +1270,8 @@ def get_session(session_id: str, db: OrmSession = Depends(get_db)):
         problem_expression=problem_expression,
         attempt_count=session_row.attempt_count,
         hint_level=session_row.hint_level,
+        completed=getattr(session_row, "completed", False),
+        current_expression=getattr(session_row, "current_expression", problem_expression),
         attempt_history=attempt_history,
         created_at=session_row.created_at,
         last_active=session_row.last_active,
