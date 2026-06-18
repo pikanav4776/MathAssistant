@@ -223,10 +223,11 @@ def test_reject_if_unsupported_rejects_constant_only() -> None:
 
 # ── 6. Regression guards ──────────────────────────────────────────────────
 
-def test_regression_2x_plus_3_plus_4_is_single_hop() -> None:
-    """2(x+3)+4 must collapse to 2x+10 in one hop (not multi-step)."""
+def test_regression_2x_plus_3_plus_4_is_multihop() -> None:
+    """2(x+3)+4 expands then combines like terms in two hops."""
     plan = build_solution_plan("2(x+3)+4")
     assert plan.topic == "linear_steps"
-    assert len(plan.steps) == 1
-    assert plan.steps[0] == plan.final_answer
+    assert len(plan.steps) == 2
+    assert plan.steps[0] == "2x+6+4"
+    assert plan.final_answer == plan.steps[-1]
     assert _sympy_equiv(plan.final_answer, "2x+10")

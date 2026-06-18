@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
+_IMPLICIT_MUL = re.compile(r"(\d+)\*([A-Za-z])")
+
 
 def preprocess_for_sympy(expression: str) -> str:
     """
@@ -40,5 +44,14 @@ def preprocess_for_sympy(expression: str) -> str:
 
 
 def display_expression(expr_str: str) -> str:
-    """Prefer ``^`` in API-facing expression strings."""
-    return expr_str.replace("**", "^")
+    """Prefer ``^`` and compact keyboard-style algebra in API-facing strings."""
+    cleaned = expr_str.replace("**", "^")
+    cleaned = re.sub(r"\s+", "", cleaned)
+    cleaned = _IMPLICIT_MUL.sub(r"\1\2", cleaned)
+    cleaned = cleaned.replace("+-", "-")
+    cleaned = cleaned.replace("-+", "-")
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        inner = cleaned[1:-1]
+        if inner.count("(") == inner.count(")"):
+            cleaned = inner
+    return cleaned

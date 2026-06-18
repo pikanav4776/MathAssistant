@@ -149,7 +149,7 @@ function showFeedback(result) {
       els.deeperHintLabel.classList.remove("hidden");
     }
   }
-  els.feedbackHint.textContent = result.hint || "";
+  els.feedbackHint.textContent = result.skip_message || result.hint || "";
 }
 
 async function parseResponse(response) {

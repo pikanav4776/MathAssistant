@@ -92,23 +92,109 @@ def reject_if_unsupported(expression: str) -> None:
         )
 
 
-def build_solution_plan(expression: str) -> SolutionPlan:
-    """
-    Build a single-hop canonical solution plan for a supported algebra problem.
+def _flatten_add_terms(expr: Add) -> list[Expr]:
+    parts: list[Expr] = []
+    for arg in expr.args:
+        expanded = expand(arg)
+        if isinstance(expanded, Add):
+            parts.extend(expanded.args)
+        else:
+            parts.append(expanded)
+    return parts
 
-    Multi-hop paths (e.g. ``2(x+3)+4``) are deferred to Commit 5.
+
+def _term_display(term: Expr) -> str:
+    return display_expression(str(expand(term)))
+
+
+def _ordered_add_display(expanded_terms: list[Expr]) -> str:
+    var_parts: list[str] = []
+    const_parts: list[str] = []
+    for term in expanded_terms:
+        inner = expand(term)
+        parts = list(inner.args) if isinstance(inner, Add) else [inner]
+        for part in parts:
+            rendered = _term_display(part)
+            if part.free_symbols:
+                var_parts.append(rendered)
+            else:
+                const_parts.append(rendered)
+    rendered_all = var_parts + const_parts
+    if not rendered_all:
+        return ""
+    result = rendered_all[0]
+    for piece in rendered_all[1:]:
+        if piece.startswith("-"):
+            result += piece
+        else:
+            result += f"+{piece}"
+    return result
+
+
+def _student_display(expr: Expr) -> str:
+    if isinstance(expr, Add):
+        expr = Add(*_flatten_add_terms(expr), evaluate=False)
+    return display_expression(str(expr))
+
+
+def canonical_step_display(expression: str) -> str:
+    """Normalize an expression to its keyboard-style canonical step string."""
+    expr = _parse_expr(expression)
+    if isinstance(expr, Add):
+        return _ordered_add_display(list(expr.args))
+    return _student_display(expr)
+
+
+def _build_multihop_steps(expr: Add) -> list[str] | None:
     """
+    Expand distributive/foil blocks inside a sum, then combine like terms.
+
+    Returns intermediate canonical steps when the expanded form differs from
+    the fully simplified answer (e.g. ``2(x+3)+4`` → ``2x+6+4``, ``2x+10``).
+    """
+    expanded_terms: list[Expr] = []
+    changed = False
+    for term in expr.args:
+        if isinstance(term, Mul) and any(isinstance(arg, Add) for arg in term.args):
+            expanded_terms.append(expand(term))
+            changed = True
+        else:
+            expanded_terms.append(term)
+    if not changed:
+        return None
+
+    intermediate = Add(*expanded_terms, evaluate=False)
+    intermediate_str = _ordered_add_display(expanded_terms)
+    normalized = _normalize_expr(intermediate)
+    final_answer = _student_display(normalized)
+    if final_answer == intermediate_str:
+        return [final_answer]
+    return [intermediate_str, final_answer]
+
+
+def build_solution_plan(expression: str) -> SolutionPlan:
+    """Build a canonical solution plan (single- or multi-hop) for a supported problem."""
     reject_if_unsupported(expression)
     expr = _parse_expr(expression)
     topic = detect_topic(expression)
     assert topic is not None  # guarded by reject_if_unsupported
 
-    normalized = _normalize_expr(expr)
-    final_answer = display_expression(str(normalized))
+    steps: list[str]
+    if isinstance(expr, Add):
+        multihop = _build_multihop_steps(expr)
+        if multihop is not None:
+            steps = multihop
+        else:
+            normalized = _normalize_expr(expr)
+            steps = [_student_display(normalized)]
+    else:
+        normalized = _normalize_expr(expr)
+        steps = [_student_display(normalized)]
 
+    final_answer = steps[-1]
     return SolutionPlan(
         topic=topic,
         subject="algebra",
-        steps=[final_answer],
+        steps=steps,
         final_answer=final_answer,
     )

@@ -56,7 +56,7 @@ from sympy.core.sympify import SympifyError
 from db.database import check_db_connection, get_db, init_db
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession
 from expression_preprocess import preprocess_for_sympy
-from step_engine import UnsupportedProblemError, build_solution_plan
+from step_engine import UnsupportedProblemError, build_solution_plan, canonical_step_display
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,11 @@ class StepInput(BaseModel):
     expected: str | None = None
 
 
+class SkippedStepInfo(BaseModel):
+    step_order: int
+    expected: str
+
+
 class StepResult(BaseModel):
     session_id: str
     received_step: str
@@ -163,6 +168,8 @@ class StepResult(BaseModel):
     is_final_step: bool | None = None
     session_complete: bool | None = None
     current_expression: str | None = None
+    skipped_steps: list[SkippedStepInfo] | None = None
+    skip_message: str | None = None
 
 
 class StartSessionRequest(BaseModel):
@@ -826,6 +833,121 @@ def _expression_equivalent(a: str, b: str) -> bool:
     return _validator.comparison(a, b)["is_equivalent"]
 
 
+def _current_step_index(session_row: TutoringSession, steps: list[SolutionStep]) -> int:
+    """
+    Return the 0-based index of the solution step the student is working toward.
+
+    ``current_step_id`` NULL means step_order 1; otherwise it holds the FK of the
+    next expected step (set after each correct submission).
+    """
+    if session_row.current_step_id is None:
+        return 0
+    for idx, row in enumerate(steps):
+        if row.sol_step_id == session_row.current_step_id:
+            return idx
+    return 0
+
+
+def _expected_step_for_session(
+    session_row: TutoringSession, steps: list[SolutionStep]
+) -> str:
+    index = _current_step_index(session_row, steps)
+    return steps[index].sol_step_expression
+
+
+def _strict_canonical_step_match(step: str, expected: str) -> bool:
+    try:
+        return canonical_step_display(step) == canonical_step_display(expected)
+    except UnsupportedProblemError:
+        return False
+
+
+def _matches_immediate_canonical_step(
+    step: str,
+    expected: str,
+    steps: list[SolutionStep],
+    current_index: int,
+) -> bool:
+    if _strict_canonical_step_match(step, expected):
+        return True
+    try:
+        if not _expression_equivalent(step, expected):
+            return False
+    except MathInputError:
+        return False
+    for idx in range(current_index + 1, len(steps)):
+        try:
+            if _expression_equivalent(step, steps[idx].sol_step_expression):
+                if not _strict_canonical_step_match(step, expected):
+                    return False
+        except MathInputError:
+            continue
+    return True
+
+
+def _validate_immediate_step(
+    data: StepInput,
+    expected: str,
+    steps: list[SolutionStep],
+    current_index: int,
+) -> StepResult:
+    if _matches_immediate_canonical_step(data.step, expected, steps, current_index):
+        return StepResult(
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=expected,
+            is_equivalent=True,
+            structural_diff=None,
+            error_classification=None,
+            hint="Correct! Well done.",
+        )
+    return _handle_step_validation(
+        StepInput(session_id=data.session_id, step=data.step, expected=expected)
+    )
+
+
+def _find_skip_ahead_target(
+    step: str,
+    steps: list[SolutionStep],
+    current_index: int,
+) -> int | None:
+    """Return the furthest future canonical step index matching ``step``, if any."""
+    target_index: int | None = None
+    for idx in range(current_index + 1, len(steps)):
+        try:
+            if _expression_equivalent(step, steps[idx].sol_step_expression):
+                target_index = idx
+        except MathInputError:
+            continue
+    return target_index
+
+
+def _build_skip_ahead_info(
+    steps: list[SolutionStep],
+    current_index: int,
+    target_index: int,
+) -> tuple[list[SkippedStepInfo], str]:
+    skipped = [
+        SkippedStepInfo(
+            step_order=steps[idx].step_order,
+            expected=steps[idx].sol_step_expression,
+        )
+        for idx in range(current_index, target_index)
+    ]
+    if len(skipped) == 1:
+        skip = skipped[0]
+        message = (
+            f"You skipped step {skip.step_order} (expected: {skip.expected}). "
+            "Continuing from your answer."
+        )
+    else:
+        parts = ", ".join(
+            f"step {item.step_order} (expected: {item.expected})" for item in skipped
+        )
+        message = f"You skipped {parts}. Continuing from your answer."
+    return skipped, message
+
+
 @app.get("/problem/{problem_id}", response_model=ProblemResponse)
 def get_problem(problem_id: str, db: OrmSession = Depends(get_db)):
     """
@@ -925,6 +1047,7 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
         session_id = str(uuid.uuid4())
         now = datetime.utcnow()
         subject = "algebra"
+        topic: str | None = None
 
         if data.problem_expression is not None:
             if not data.problem_expression.strip():
@@ -951,6 +1074,7 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
 
             problem_expression = data.problem_expression.strip()
             expected_final = plan.final_answer
+            subject = plan.subject
             topic = plan.topic
             problem_id = data.problem_id or _problem_id_from_expression(problem_expression)
             stmt = (
@@ -1081,24 +1205,12 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
             current_expression=session_row.current_expression,
         )
 
-    if session_row.current_step_id is None:
-        current_index = 0
-    else:
-        current_index = 0
-        for idx, row in enumerate(steps):
-            if row.sol_step_id == session_row.current_step_id:
-                current_index = idx
-                break
+    current_index = _current_step_index(session_row, steps)
+    expected_step = steps[current_index].sol_step_expression
+    is_final_step = current_index == (step_count - 1)
 
-    expected_step = (
-        data.expected
-        if data.expected is not None
-        else steps[current_index].sol_step_expression
-    )
-
-    # no-progress submission: same expression as the current line
-    try:
-        if _expression_equivalent(data.step, session_row.current_expression):
+    # no-progress submission: same expression as the current line (exact, not merely equivalent)
+    if data.step.strip() == session_row.current_expression.strip():
             hint = generate_hint("no_progress", hint_level=session_row.hint_level)
             result = StepResult(
                 session_id=data.session_id,
@@ -1135,13 +1247,45 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
             session_row.last_active = attempt_ts
             db.commit()
             return result
-    except MathInputError:
-        # let validator return the user-safe parsing classification below
-        pass
 
-    result = _handle_step_validation(
-        StepInput(session_id=data.session_id, step=data.step, expected=expected_step)
-    )
+    skip_target_index: int | None = None
+    skipped_steps: list[SkippedStepInfo] | None = None
+    skip_message: str | None = None
+    if not is_final_step:
+        skip_target_index = _find_skip_ahead_target(data.step, steps, current_index)
+        if skip_target_index is not None and _strict_canonical_step_match(
+            data.step, expected_step
+        ):
+            skip_target_index = None
+        if skip_target_index is not None:
+            skipped_steps, skip_message = _build_skip_ahead_info(
+                steps, current_index, skip_target_index
+            )
+            result = StepResult(
+                session_id=data.session_id,
+                received_step=data.step,
+                expected_step=expected_step,
+                is_equivalent=True,
+                structural_diff=None,
+                error_classification=None,
+                hint="Correct! Well done.",
+                skipped_steps=skipped_steps,
+                skip_message=skip_message,
+            )
+        else:
+            result = _validate_immediate_step(
+                StepInput(session_id=data.session_id, step=data.step, expected=expected_step),
+                expected_step,
+                steps,
+                current_index,
+            )
+    else:
+        result = _validate_immediate_step(
+            StepInput(session_id=data.session_id, step=data.step, expected=expected_step),
+            expected_step,
+            steps,
+            current_index,
+        )
 
     session_obj = SessionState(
         session_id=session_row.session_id,
@@ -1175,14 +1319,20 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
     session_row.hint_level = session_obj.hint_level
     session_row.last_active = datetime.utcnow()
 
-    is_final_step = current_index == (step_count - 1)
     session_complete = False
     if result.is_equivalent:
         session_row.current_expression = data.step
-        if is_final_step:
+        if skip_target_index is not None:
+            if skip_target_index == step_count - 1:
+                session_row.completed = True
+                session_complete = True
+                session_row.current_step_id = steps[-1].sol_step_id
+            else:
+                session_row.current_step_id = steps[skip_target_index + 1].sol_step_id
+        elif is_final_step:
             session_row.completed = True
             session_complete = True
-            session_row.current_step_id = steps[current_index].sol_step_id
+            session_row.current_step_id = steps[-1].sol_step_id
         else:
             next_row = steps[current_index + 1]
             session_row.current_step_id = next_row.sol_step_id
@@ -1205,13 +1355,18 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
         )
     )
     db.commit()
+    response_index = step_count if session_complete else current_index + 1
+    if skip_target_index is not None:
+        response_index = skip_target_index + 1
     return result.model_copy(
         update={
-            "step_index": current_index + 1,
+            "step_index": response_index,
             "step_count": step_count,
-            "is_final_step": is_final_step,
+            "is_final_step": session_complete,
             "session_complete": session_complete,
             "current_expression": session_row.current_expression,
+            "skipped_steps": skipped_steps,
+            "skip_message": skip_message,
         }
     )
 
