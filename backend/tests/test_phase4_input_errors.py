@@ -3,7 +3,6 @@ import pytest
 
 from main import (
     DivisionByZeroError,
-    InvalidFormatError,
     MalformedSyntaxError,
     StepInput,
     UndefinedMathError,
@@ -32,9 +31,10 @@ def test_parser_rejects_malformed_syntax(validator):
         validator.parser("2*/3")
 
 
-def test_parser_rejects_invalid_exponent_format(validator):
-    with pytest.raises(InvalidFormatError):
-        validator.parser("x**2")
+def test_parser_accepts_caret_and_python_exponent_formats(validator):
+    caret = validator.parser("x^2")
+    python_style = validator.parser("x**2")
+    assert validator.normalize(caret) == validator.normalize(python_style)
 
 
 def _submit(step: str, expected: str = "2*x+6"):
@@ -61,9 +61,10 @@ def test_api_undefined_math_safe_response():
     assert body.error_classification["error_type"] == "undefined_math"
 
 
-def test_api_invalid_format_safe_response():
-    body = _submit("x**2")
-    assert body.error_classification["error_type"] == "invalid_format"
+def test_api_python_exponent_accepted():
+    body = _submit("x**2", expected="x**2")
+    assert body.is_equivalent is True
+    assert body.error_classification is None
 
 
 def test_api_garbage_symbol_safe_response():

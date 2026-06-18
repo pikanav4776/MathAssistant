@@ -1,0 +1,43 @@
+# MathAssistant — Render Blueprint (staging)
+# https://render.com/docs/blueprint-spec
+#
+# Apply as a second Blueprint from the same repo to provision staging services.
+# Use a separate Neon branch/database for DATABASE_URL (see Technical_Architecture_Spec.txt).
+#
+# Required dashboard env vars (set during Blueprint setup or in each service):
+#   Backend (mathassistant-api-staging):
+#     DATABASE_URL  — Neon staging branch connection string (?sslmode=require)
+#     CORS_ORIGINS  — Staging frontend URL, e.g. https://mathassistant-frontend-staging.onrender.com
+#     SENTRY_DSN    — Optional; use a separate Sentry project/environment for staging
+#   Frontend (mathassistant-frontend-staging):
+#     API_BASE_URL  — Staging backend URL, e.g. https://mathassistant-api-staging.onrender.com
+
+services:
+  - type: web
+    name: mathassistant-api-staging
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: ENVIRONMENT
+        value: staging
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+
+  - type: web
+    name: mathassistant-frontend-staging
+    runtime: static
+    rootDir: frontend
+    buildCommand: 'echo "window.API_BASE = \"$API_BASE_URL\";" > config.js'
+    staticPublishPath: .
+    envVars:
+      - key: API_BASE_URL
+        sync: false

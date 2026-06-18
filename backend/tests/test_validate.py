@@ -31,4 +31,4 @@ def test_validate_includes_structural_diff_on_failure(validator):
 
 def test_validate_parse_error_bubbles(validator):
     with pytest.raises(ParseError):
-        validator.validate("x**2", "2*x")
+        validator.validate("2@3", "2*x")

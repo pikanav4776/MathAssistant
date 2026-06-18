@@ -13,7 +13,9 @@ PARSER_VALID_CASES: list[dict] = [
     {"id": "paren-product", "expression": "(x+1)*(x+2)"},
     {"id": "paren-adjacent", "expression": "(x+1)(x+2)", "equivalent_to": "(x+1)*(x+2)"},
     {"id": "caret-exponent", "expression": "x^2"},
+    {"id": "python-exponent", "expression": "x**2", "equivalent_to": "x^2"},
     {"id": "nested-exponent", "expression": "(x+1)^2"},
+    {"id": "nested-python-exponent", "expression": "(x+1)**2", "equivalent_to": "(x+1)^2"},
     {"id": "distribution-form", "expression": "2*(x+3)"},
     {"id": "multi-variable", "expression": "3*x*y*z"},
     {"id": "negative-coeff", "expression": "-4*a+7*z"},
@@ -21,7 +23,6 @@ PARSER_VALID_CASES: list[dict] = [
 ]
 
 PARSER_INVALID_CASES: list[dict] = [
-    {"id": "python-exponent", "expression": "x**2", "error_type": "invalid_format"},
     {"id": "division-by-zero", "expression": "1/0", "error_type": "division_by_zero"},
     {"id": "log-zero", "expression": "log(0)", "error_type": "undefined_math"},
     {"id": "consecutive-ops", "expression": "2*/3"},

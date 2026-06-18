@@ -1,6 +1,6 @@
 Technical Architecture Spec
 Version: v0.2 (MVP)
-Last updated: June 16, 2026
+Last updated: June 17, 2026
 
 ================================================================================
 SYSTEM OVERVIEW
@@ -42,6 +42,35 @@ Math engine:
 
 Database:
 	PostgreSQL via SQLAlchemy
+
+Deployment:
+	Render (mathassistant-api web service + mathassistant-frontend static site)
+	Neon (managed PostgreSQL)
+	GitHub Actions (CI on pull requests and pushes to main)
+
+================================================================================
+PROJECT STRUCTURE
+================================================================================
+
+MathAssistant/
+	backend/           FastAPI app, SymPy engine, PostgreSQL models
+	  main.py          API + validation pipeline
+	  db/              SQLAlchemy models and seed data
+	  tests/           pytest suite and evaluation runners
+	frontend/          Primary UI (HTML/CSS/JS)
+	app/               Legacy Next.js UI
+	documentation/     Product and architecture specs
+	reports/           Evaluation reports
+	scripts/           Dataset verification utilities
+	.github/workflows/ CI workflow (ci.yml)
+	render.yaml        Render Blueprint for production deploy
+	render-staging.yaml Render Blueprint for staging deploy
+
+Related docs:
+	documentation/Product_Spec.txt          — problem statement, goals, MVP scope
+	documentation/Current_Plan.txt          — phased development plan and status
+	documentation/Post_MVP_Features.md      — post-MVP ideas (e.g. opt-in activity summaries)
+	frontend/README.md                      — frontend setup and user flow
 
 ================================================================================
 SYSTEM COMPONENTS
@@ -148,25 +177,36 @@ CORE ALGORITHM
 Validation follows standard algebraic rules and order of operations (PEMDAS).
 
 ================================================================================
-EVALUATION FRAMEWORK
+API REFERENCE
 ================================================================================
 
-Target metrics (aligned with Product_Spec.txt):
+| Method   | Path                    | Purpose                                              |
+|----------|-------------------------|------------------------------------------------------|
+| GET      | /                       | Root status message (not used for Render health)     |
+| GET      | /health                 | Liveness probe (no DB)                               |
+| GET      | /ready                  | Readiness probe (SELECT 1 against PostgreSQL)        |
+| GET      | /sample-problem         | Random problem (optional difficulty, topic filters)  |
+| GET      | /problem/{problem_id}   | Fetch problem by ID                                  |
+| POST     | /problem                | Create problem (admin; no auth yet)                  |
+| POST     | /start-session          | Start tutoring session                               |
+| POST     | /submit-step            | Validate a student step                              |
+| GET      | /session/{session_id}   | Session summary + attempt history                    |
+| DELETE   | /session/{session_id}   | Delete session and attempts                          |
 
-	first-error detection accuracy:  100%
-	classification accuracy:         >= 70% (product spec); 80% stretch goal
-	hint usefulness:                 >= 75%
-	final answer accuracy:           >= 80%
+Interactive schemas: http://127.0.0.1:8000/docs when backend is running.
 
-Run: backend/tests/run_evaluation.py
-Report: reports/evaluation_report.md
+Input notation: use ^ for exponents (x^2), not **.
 
-================================================================================
-API DESIGN
-================================================================================
+Endpoint details:
 
 GET    /
-	Health check
+	Root status JSON (version string); not the Render health check
+
+GET    /health
+	Liveness: {"status": "ok"} — no database access
+
+GET    /ready
+	Readiness: {"status": "ok", "db": "connected"} or HTTP 503 if DB unreachable
 
 GET    /sample-problem
 	Random problem; optional query params: difficulty, topic
@@ -189,21 +229,249 @@ GET    /session/{session_id}
 DELETE /session/{session_id}
 	Delete session and its attempts
 
-Interactive schemas: http://127.0.0.1:8000/docs when backend is running.
-
-Input notation: use ^ for exponents (x^2), not **.
-
 ================================================================================
-RISKS & LIMITATIONS
+TESTING & EVALUATION
 ================================================================================
 
+Unit and integration tests (from backend/):
+
+	pytest
+
+Local equivalent of CI:
+
+	pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+	pytest backend/tests/
+
+Evaluation benchmark:
+
+	python tests/run_evaluation.py
+
+Latest results: reports/evaluation_report.md
+
+Target metrics (aligned with Product_Spec.txt):
+
+	first-error detection accuracy:  100%
+	classification accuracy:         >= 70% (product spec); 80% stretch goal
+	hint usefulness:                 >= 75%
+	final answer accuracy:           >= 80%
+
+The test suite covers the SymPy validation pipeline (parser, normalize, compare,
+hints). It does not require a live database today, but CI provisions Postgres so
+future DB-backed tests can run without workflow changes.
+
+================================================================================
+CI/CD
+================================================================================
+
+How CI and CD work together:
+
+	Feature branch → open PR → GitHub Actions runs pytest (CI)
+	  → merge to main (blocked until the CI check passes, if branch protection is on)
+	  → push to main re-runs CI and triggers Render auto-deploy (CD)
+	  → Render builds and deploys mathassistant-api + mathassistant-frontend
+
+GitHub Actions validates code only; it does not deploy. Render watches the main
+branch and redeploys on each push. Branch protection ties them together: broken
+tests cannot merge to main, so production only receives code that passed CI.
+
+--------------------------------------------------------------------------------
+GitHub Actions (CI)
+--------------------------------------------------------------------------------
+
+Workflow: .github/workflows/ci.yml
+Triggers: every pull request; pushes to main
+
+Steps:
+	1. Start PostgreSQL 16 service container (test / test, database mathassistant).
+	2. Check out the repo and install Python 3.11.
+	3. Install dependencies from backend/requirements.txt and
+	   backend/requirements-dev.txt.
+	4. Run pytest backend/tests/ with
+	   DATABASE_URL=postgresql://test:test@localhost:5432/mathassistant.
+
+GitHub branch protection (require CI before merge):
+
+	Cannot be enforced from the repo alone — configure in GitHub UI:
+
+	1. Open the MathAssistant repository on GitHub.
+	2. Settings → Branches → Add branch protection rule (or Edit rule for main).
+	3. Branch name pattern: main
+	4. Enable Require a pull request before merging (recommended).
+	5. Enable Require status checks to pass before merging.
+	6. In the status checks search box, type CI and select the check named
+	   CI (workflow file: .github/workflows/ci.yml, job id: test).
+	   If it does not appear yet, push a PR that runs CI once, then return here.
+	7. Optional: Require branches to be up to date before merging.
+	8. Save changes.
+
+	Merges to main then trigger Render auto-deploy only after the CI workflow
+	(job test) succeeds.
+
+--------------------------------------------------------------------------------
+Render (CD)
+--------------------------------------------------------------------------------
+
+Production deploys use the Render Blueprint (render.yaml) at the repo root: a
+Python web service (mathassistant-api) and a static site (mathassistant-frontend).
+PostgreSQL lives on Neon (see Neon setup below).
+
+Start command (backend): alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT
+Health check path: /health (liveness). Use GET /ready to verify DB connectivity.
+
+Schema on deploy:
+	- Fresh Neon DB: alembic upgrade head creates all tables (revision f3a7b2c91d04).
+	- Existing prod DB (tables already present): one-time `alembic stamp head` from
+	  backend/ with DATABASE_URL set — see documentation/Database_Operations.md.
+	- Local dev: init_db() may still create_all() when ENVIRONMENT=development,
+	  SKIP_MIGRATIONS=true, or DATABASE_URL points at localhost.
+
+1. Connect GitHub repo to Render
+	- Sign in to Render Dashboard (https://dashboard.render.com).
+	- Click New + → Blueprint.
+	- Connect GitHub account if prompted, select the MathAssistant repository.
+	- Render reads render.yaml and shows the two services to create. Continue.
+
+2. Apply Blueprint from render.yaml
+	- Confirm service names: mathassistant-api (Python) and
+	  mathassistant-frontend (static).
+	- Render prompts for secret env vars marked sync: false in the Blueprint.
+	- Click Apply to create both services.
+
+3. Set environment variables
+
+	| Service                  | Variable       | Example / notes                                              |
+	|--------------------------|----------------|--------------------------------------------------------------|
+	| mathassistant-api        | DATABASE_URL   | postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require (Neon pooled connection string) |
+	| mathassistant-api        | CORS_ORIGINS   | https://mathassistant-frontend.onrender.com (static site URL, no trailing slash) |
+	| mathassistant-api        | SENTRY_DSN     | Optional. From sentry.io project → Client Keys (DSN). Omit to disable. |
+	| mathassistant-api        | SENTRY_TRACES_SAMPLE_RATE | Optional. Default 0.1 when SENTRY_DSN is set. |
+	| mathassistant-frontend   | API_BASE_URL   | https://mathassistant-api.onrender.com (backend URL, HTTPS, no trailing slash) |
+
+	After the first deploy, copy actual Render URLs from each service Settings page
+	if default names differ.
+
+4. Enable auto-deploy from main only
+
+	For each service (mathassistant-api and mathassistant-frontend):
+	- Open the service in Render Dashboard.
+	- Go to Settings → Build & Deploy.
+	- Set Branch to main.
+	- Ensure Auto-Deploy is On.
+
+	Do not enable auto-deploy on feature branches.
+
+5. Verify deploy worked
+	- Backend liveness: https://<mathassistant-api-host>/health — expect {"status":"ok"}.
+	- Backend readiness: https://<mathassistant-api-host>/ready — expect db connected.
+	- Root: https://<mathassistant-api-host>/ — still returns version JSON.
+	- API docs: https://<mathassistant-api-host>/docs should load.
+	- Frontend: https://<mathassistant-frontend-host>/ — expect Algebra Step Validator.
+	- Submit a sample step; browser should call API without CORS errors.
+	- If SENTRY_DSN is set, trigger a test error or use Sentry's "Send test event".
+
+	Render Events / Logs tab shows build and deploy status on failure.
+
+Static-site build note:
+	The static-site build writes frontend/config.js from API_BASE_URL. Local dev is
+	unchanged: config.js defaults to http://127.0.0.1:8000 and backend/start.ps1
+	still uses --reload.
+
+--------------------------------------------------------------------------------
+Neon database setup
+--------------------------------------------------------------------------------
+
+	1. Create a project at neon.tech (free tier sufficient for MVP).
+	2. Create a database (default name often neondb).
+	3. In Neon console: Connection details → copy Pooled connection string.
+	4. Append ?sslmode=require if not already in the URL.
+	5. Paste into Render as DATABASE_URL on mathassistant-api.
+	6. On first deploy, Render runs `alembic upgrade head` then starts the API;
+	   init_db() seeds problems/wrong answers on startup (no create_all in prod).
+
+Local dev: put the same URL (or local Postgres URL) in backend/.env — see
+backend/.env.example.
+
+See also: render.yaml, render-staging.yaml, documentation/Database_Operations.md,
+frontend/README.md
+
+--------------------------------------------------------------------------------
+Staging environment (Render + Neon branch)
+--------------------------------------------------------------------------------
+
+Use render-staging.yaml for a second Blueprint with isolated services:
+
+	mathassistant-api-staging       (Python web, rootDir backend)
+	mathassistant-frontend-staging  (static site, rootDir frontend)
+
+Apply second Blueprint:
+
+	1. Render Dashboard → New + → Blueprint.
+	2. Select the same MathAssistant GitHub repo.
+	3. When prompted for the Blueprint file, choose render-staging.yaml
+	   (or specify path if Render asks).
+	4. Set secret env vars for staging services:
+	   - mathassistant-api-staging: DATABASE_URL (Neon staging branch),
+	     CORS_ORIGINS (staging frontend URL), optional SENTRY_DSN.
+	   - mathassistant-frontend-staging: API_BASE_URL (staging backend URL).
+	5. Apply. Point each service's deploy branch to main (or a staging branch if
+	   you prefer manual promote).
+
+Neon: create a branch per environment (e.g. main → production, staging → staging).
+Use the staging branch connection string only on mathassistant-api-staging.
+Never share production DATABASE_URL with staging.
+
+Staging backend sets ENVIRONMENT=staging in render-staging.yaml (no create_all;
+migrations still run via alembic upgrade head on start).
+
+Verify staging: /health and /ready on staging API URL; smoke-test frontend against
+staging API.
+
+--------------------------------------------------------------------------------
+Sentry (optional error monitoring)
+--------------------------------------------------------------------------------
+
+Dependency: sentry-sdk[fastapi] in backend/requirements.txt.
+
+Initialization: backend/main.py calls sentry_sdk.init only when SENTRY_DSN is set.
+Missing or empty SENTRY_DSN does not crash the app.
+
+Setup:
+
+	1. Create a project at https://sentry.io (FastAPI/Python).
+	2. Copy the DSN from Project Settings → Client Keys.
+	3. In Render → mathassistant-api → Environment → add SENTRY_DSN (sync: false).
+	4. Optional: SENTRY_TRACES_SAMPLE_RATE (default 0.1).
+	5. Redeploy. Confirm events in Sentry Issues or send a test event from the UI.
+
+Use a separate Sentry project or environment for staging vs production.
+
+--------------------------------------------------------------------------------
+Database backups and migration safety
+--------------------------------------------------------------------------------
+
+Full operational detail: documentation/Database_Operations.md
+
+Summary:
+
+	- Neon PITR: restore branch to a point in time before an incident; upgrade Neon
+	  plan for retention that matches your RPO.
+	- Pre-migration: create a Neon branch snapshot or pg_dump before production
+	  alembic upgrade head.
+	- Existing prod DBs without alembic_version row: one-time `alembic stamp head`
+	  from backend/ before relying on deploy-time migrations.
+
+================================================================================
+RISKS & LIMITATIONS (MVP)
+================================================================================
+
+	- algebra only (no geometry, calculus, statistics)
+	- structured text input required (no OCR)
+	- no automatic problem generation (library + seed data only)
+	- systems limited to modest complexity (see Product_Spec.txt)
 	- ambiguous student notation (^ vs **, implicit multiplication)
 	- SymPy symbolic equivalence edge cases
 	- misclassification on structurally similar wrong steps
 	- hint quality bounded by rule-based templates
-	- algebra-only domain
-	- structured input required (no OCR)
-	- limited equation complexity
 
 ================================================================================
 FUTURE EXTENSIONS
@@ -217,3 +485,5 @@ FUTURE EXTENSIONS
 	personalized learning analytics
 
 See documentation/Current_Plan.txt for phased roadmap.
+See documentation/Post_MVP_Features.md for post-MVP feature notes (e.g. opt-in
+user activity summaries via Azure Functions / email).

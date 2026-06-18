@@ -1,6 +1,6 @@
 # MathAssistant Frontend
 
-Vanilla HTML, CSS, and JavaScript UI for the MathAssistant algebra step validator.
+Vanilla HTML, CSS, and JavaScript UI for the MathAssistant v0.3 algebra co-solver.
 
 See the root [README.md](../README.md) for full project setup (database, backend, testing).
 
@@ -30,7 +30,7 @@ cd frontend
 
 Open: **http://localhost:3000**
 
-You should see the subtitle **"Algebra Step Validator"** (not "MathAssistant MVP").
+You should see the subtitle **"Algebra Co-Solving (v0.3)"**.
 
 ## Production API URL
 
@@ -42,24 +42,23 @@ For deployment, Render's build step (see root [render.yaml](../render.yaml)) ove
 echo "window.API_BASE = \"$API_BASE_URL\";" > config.js
 ```
 
-Set the backend `CORS_ORIGINS` env var to your frontend URL so the browser can call the API (see `backend/.env.example`). See root [README.md](../README.md) for the full Render + Neon checklist.
+Set the backend `CORS_ORIGINS` env var to your frontend URL so the browser can call the API (see `backend/.env.example`). See [documentation/Technical_Architecture_Spec.txt](../documentation/Technical_Architecture_Spec.txt) for the full Render + Neon checklist.
 
 ## User flow
 
-1. **Pick a problem** — A random problem loads on startup. Use Difficulty/Topic filters and "Get a Problem" to fetch another.
-2. **Start session** — Click "Start Session". The app calls `POST /start-session` with the problem ID.
-3. **Submit steps** — Type your simplified expression and click "Check Step" (or press Enter).
-4. **Get feedback** — See correctness, error type, and hints. After 3 wrong math answers, hints go deeper. After 5, the solution is revealed.
-5. **Finish** — Correct answer or limit reached shows the completion screen. "Reveal solution" ends early.
-6. **Try again** — "Try another problem" resets everything and returns to problem selection.
+1. **Enter a problem** — Type a keyboard-style algebra expression (e.g. `2(x+3)`).
+2. **Start session** — The app calls `POST /start-session` with `problem_expression` only.
+3. **Submit your next step** — Type one algebraic transformation and click "Check Step".
+4. **Get iterative feedback** — The server compares to the expected next step, classifies errors, and advances only on correct submissions.
+5. **Finish** — Session completes once the final canonical step is reached (or reveal after repeated incorrect attempts).
 
 ## API endpoints used
 
 | Action | Endpoint |
 |--------|----------|
-| Load problem | `GET /sample-problem` |
+| Load example problem | `GET /sample-problem` |
 | Start tutoring | `POST /start-session` |
-| Check answer | `POST /submit-step` |
+| Check step | `POST /submit-step` |
 | Clean up | `DELETE /session/{id}` |
 
 ## Known limitations
@@ -67,7 +66,8 @@ Set the backend `CORS_ORIGINS` env var to your frontend URL so the browser can c
 - The frontend must be served over HTTP (not `file://`) for API calls to work.
 - If the backend is not running, all requests fail with a connection error.
 - Refreshing the page mid-session loses client state (the session may still exist in the database until deleted).
-- Input notation errors (e.g. using `**` instead of `^`) show a warning but do not count toward the 5-attempt limit.
+- Input notation errors (e.g. using `**` instead of `^`) show a warning and do not count toward the 5-attempt limit.
+- Equations / inequalities and non-keyboard math symbols are intentionally rejected in v0.3.
 
 ## File structure
 

@@ -3,7 +3,7 @@ MathAssistant – FastAPI + SymPy tutoring backend
 =================================================
 Data flow (one request):
 
-  raw student string  (^ for exponents, e.g. x^2 — not **)
+  raw student string  (^ or ** for exponents, e.g. x^2 or x**2)
        │
        ▼
   [PARSING LAYER]        parser()              pre-process & sympify
@@ -55,6 +55,7 @@ from sympy.core.sympify import SympifyError
 
 from db.database import check_db_connection, get_db, init_db
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession
+from expression_preprocess import preprocess_for_sympy
 from step_engine import UnsupportedProblemError, build_solution_plan
 
 logger = logging.getLogger(__name__)
@@ -471,39 +472,20 @@ class StepValidator:
     """This class is used to validate a step of a problem."""
 
     def parser(self, expression: str) -> Expr:
-        if "**" in expression: # does this even matter? "**" and "^" should be accepted equally; perhaps this InvalidFormatError should be removed post-MVP.
-            raise InvalidFormatError(
-                "Use ^ for exponents (e.g. x^2), not **",
-                user_message="Use ^ for exponents (e.g. x^2), not **.",
-            )
-
         _scan_text_for_input_issues(expression)
 
-        processed = []
+        cleaned = preprocess_for_sympy(expression)
         i = 0
-        n = len(expression)
-
-        while i < n:
-            ch = expression[i]
-            nxt = expression[i + 1] if i + 1 < n else ""
-
-            if ch == "^":
-                processed.append("**")
-            elif ch.isdigit() and nxt.isalpha():
-                processed.append(ch)
-                processed.append("*")
-            elif ch == ")" and nxt == "(":
-                processed.append(")*")
-            elif ch in "+-*/" and nxt in "*/":
+        while i < len(cleaned) - 1:
+            ch = cleaned[i]
+            nxt = cleaned[i + 1]
+            if ch in "+-*/" and nxt in "*/" and not (ch == "*" and nxt == "*"):
                 raise MalformedSyntaxError(
                     f"Consecutive operators at position {i}: '{ch}{nxt}'",
                     user_message=f"Invalid operators near position {i + 1} ('{ch}{nxt}').",
                 )
-            else:
-                processed.append(ch)
             i += 1
 
-        cleaned = "".join(processed)
         expr = _sympify_safe(cleaned, expression)
         _ensure_algebraically_defined(expr)
         return expr

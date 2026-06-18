@@ -26,4 +26,4 @@ def test_comparison_identical_steps(validator):
 
 def test_comparison_parse_failure(validator):
     with pytest.raises(ParseError):
-        validator.comparison("x**2", "2*x")
+        validator.comparison("2@3", "2*x")

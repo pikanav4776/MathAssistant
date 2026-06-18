@@ -1,9 +1,4 @@
-/* =============================================================================
-   CONSTANTS
-   ============================================================================= */
-
 const API_BASE = window.API_BASE;
-
 const MAX_ATTEMPTS_BEFORE_ESCALATION = 3;
 const MAX_ATTEMPTS_BEFORE_REVEAL = 5;
 
@@ -18,132 +13,19 @@ const INPUT_ERROR_TYPES = new Set([
   "engine_error",
 ]);
 
-const ERROR_TYPE_LABELS = {
-  distribution_error: "Missing terms",
-  sign_error: "Sign error",
-  arithmetic_error: "Arithmetic error",
-  unknown: "Check your work",
-};
-
-/* =============================================================================
-   STATE
-   ============================================================================= */
-
 const state = {
-  currentProblem: null,
+  problemExpression: "",
+  expectedFinal: "",
+  currentExpression: "",
+  topic: "",
   sessionId: null,
-  incorrectAttemptCount: 0,
-  attemptHistory: [],
-  hintLevel: 1,
   sessionComplete: false,
+  incorrectAttemptCount: 0,
   totalAttempts: 0,
-  endedByGiveUp: false,
+  stepIndex: 1,
+  stepCount: 1,
+  attemptHistory: [],
 };
-
-function resetState() {
-  state.currentProblem = null;
-  state.sessionId = null;
-  state.incorrectAttemptCount = 0;
-  state.attemptHistory = [];
-  state.hintLevel = 1;
-  state.sessionComplete = false;
-  state.totalAttempts = 0;
-  state.endedByGiveUp = false;
-}
-
-/* =============================================================================
-   API LAYER
-   ============================================================================= */
-
-async function parseResponse(response) {
-  let data;
-  try {
-    data = await response.json();
-  } catch {
-    throw new Error("Unexpected response from server.");
-  }
-
-  if (!response.ok) {
-    const detail = data?.detail ?? data?.error ?? data?.message;
-    if (typeof detail === "string") {
-      throw new Error(detail);
-    }
-    if (detail && typeof detail === "object" && detail.error) {
-      throw new Error(detail.error);
-    }
-    throw new Error("Request failed. Please try again.");
-  }
-
-  return data;
-}
-
-const api = {
-  async getSampleProblem(difficulty, topic) {
-    const params = new URLSearchParams();
-    if (difficulty) params.set("difficulty", difficulty);
-    if (topic) params.set("topic", topic);
-    const qs = params.toString();
-    const url = `${API_BASE}/sample-problem${qs ? `?${qs}` : ""}`;
-
-    try {
-      const response = await fetch(url);
-      return await parseResponse(response);
-    } catch (err) {
-      if (err instanceof Error && err.message !== "Failed to fetch") {
-        throw err;
-      }
-      throw new Error("Could not reach the server. Is the backend running?");
-    }
-  },
-
-  async startSession(problemId) {
-    try {
-      const response = await fetch(`${API_BASE}/start-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problem_id: problemId }),
-      });
-      return await parseResponse(response);
-    } catch (err) {
-      if (err instanceof Error && err.message !== "Failed to fetch") {
-        throw err;
-      }
-      throw new Error("Could not reach the server. Is the backend running?");
-    }
-  },
-
-  async submitStep(sessionId, step, expected) {
-    try {
-      const response = await fetch(`${API_BASE}/submit-step`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, step, expected }),
-      });
-      return await parseResponse(response);
-    } catch (err) {
-      if (err instanceof Error && err.message !== "Failed to fetch") {
-        throw err;
-      }
-      throw new Error("Could not reach the server. Is the backend running?");
-    }
-  },
-
-  async deleteSession(sessionId) {
-    try {
-      const response = await fetch(`${API_BASE}/session/${sessionId}`, {
-        method: "DELETE",
-      });
-      return await parseResponse(response);
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-      return null;
-    }
-  },
-};
-
-/* =============================================================================
-   DOM REFERENCES
-   ============================================================================= */
 
 const views = {
   selection: document.getElementById("view-problem-selection"),
@@ -152,20 +34,14 @@ const views = {
 };
 
 const els = {
-  filterDifficulty: document.getElementById("filter-difficulty"),
-  filterTopic: document.getElementById("filter-topic"),
+  problemInput: document.getElementById("problem-input"),
+  btnStartSession: document.getElementById("btn-start-session"),
   btnGetProblem: document.getElementById("btn-get-problem"),
   problemLoading: document.getElementById("problem-loading"),
   problemError: document.getElementById("problem-error"),
-  problemCard: document.getElementById("problem-card"),
-  problemExpression: document.getElementById("problem-expression"),
-  problemDifficulty: document.getElementById("problem-difficulty"),
-  problemTopic: document.getElementById("problem-topic"),
-  btnStartSession: document.getElementById("btn-start-session"),
-  startSessionError: document.getElementById("start-session-error"),
   sessionExpression: document.getElementById("session-expression"),
-  sessionDifficulty: document.getElementById("session-difficulty"),
   sessionTopic: document.getElementById("session-topic"),
+  sessionStepCounter: document.getElementById("session-step-counter"),
   attemptLabel: document.getElementById("attempt-label"),
   attemptDots: document.getElementById("attempt-dots"),
   stepInput: document.getElementById("step-input"),
@@ -188,58 +64,50 @@ const els = {
   btnTryAnother: document.getElementById("btn-try-another"),
 };
 
-/* =============================================================================
-   VIEW SWITCHING
-   ============================================================================= */
+function resetState() {
+  state.problemExpression = "";
+  state.expectedFinal = "";
+  state.currentExpression = "";
+  state.topic = "";
+  state.sessionId = null;
+  state.sessionComplete = false;
+  state.incorrectAttemptCount = 0;
+  state.totalAttempts = 0;
+  state.stepIndex = 1;
+  state.stepCount = 1;
+  state.attemptHistory = [];
+}
 
 function showView(name) {
   Object.values(views).forEach((view) => view.classList.add("hidden"));
   views[name].classList.remove("hidden");
 }
 
-/* =============================================================================
-   HELPERS
-   ============================================================================= */
-
-function isInputError(errorType) {
-  return errorType != null && INPUT_ERROR_TYPES.has(errorType);
-}
-
-function setBadge(el, difficulty) {
-  el.textContent = difficulty || "—";
-  el.className = "badge";
-  if (difficulty) {
-    el.classList.add(`badge--${difficulty.toLowerCase()}`);
-  }
-}
-
-function renderProblemCard(problem) {
-  els.problemExpression.textContent = problem.expression;
-  setBadge(els.problemDifficulty, problem.difficulty);
-  els.problemTopic.textContent = problem.topic || "—";
-  els.problemCard.classList.remove("hidden");
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function updateAttemptTracker(allGreen = false) {
   const nextAttempt = state.incorrectAttemptCount + 1;
-  els.attemptLabel.textContent = `Attempt ${Math.min(nextAttempt, MAX_ATTEMPTS_BEFORE_REVEAL)} of ${MAX_ATTEMPTS_BEFORE_REVEAL}`;
+  els.attemptLabel.textContent = `Attempt ${Math.min(
+    nextAttempt,
+    MAX_ATTEMPTS_BEFORE_REVEAL
+  )} of ${MAX_ATTEMPTS_BEFORE_REVEAL}`;
 
   const dots = els.attemptDots.querySelectorAll(".dot");
   dots.forEach((dot, index) => {
     dot.classList.remove("dot--filled", "dot--success");
-    if (allGreen) {
-      dot.classList.add("dot--success");
-    } else if (index < state.incorrectAttemptCount) {
-      dot.classList.add("dot--filled");
-    }
+    if (allGreen) dot.classList.add("dot--success");
+    else if (index < state.incorrectAttemptCount) dot.classList.add("dot--filled");
   });
 }
 
 function renderAttemptHistory() {
   els.attemptHistoryList.innerHTML = "";
   const items = [...state.attemptHistory].reverse();
-
-  if (items.length === 0) {
+  if (!items.length) {
     const li = document.createElement("li");
     li.className = "attempt-history-item";
     li.textContent = "No attempts yet.";
@@ -250,26 +118,20 @@ function renderAttemptHistory() {
   items.forEach((item) => {
     const li = document.createElement("li");
     li.className = "attempt-history-item";
-
-    const mark = item.is_equivalent ? "✓" : item.isInputError ? "⚠" : "✗";
+    const mark = item.isEquivalent ? "✓" : item.isInputError ? "⚠" : "✗";
     li.innerHTML = `
-      <div class="attempt-history-step">${mark} ${escapeHtml(item.step)}</div>
+      <div class="attempt-history-step">${mark} [Step ${item.stepOrder}] ${escapeHtml(
+      item.step
+    )}</div>
       <div class="attempt-history-meta">${escapeHtml(item.hint || "")}</div>
     `;
     els.attemptHistoryList.appendChild(li);
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 function showFeedback(result) {
   const errorType = result.error_classification?.error_type ?? null;
-  const inputError = isInputError(errorType);
-
+  const inputError = errorType != null && INPUT_ERROR_TYPES.has(errorType);
   els.feedbackPanel.classList.remove("hidden");
   els.feedbackBanner.className = "feedback-banner";
   els.deeperHintLabel.classList.add("hidden");
@@ -277,262 +139,244 @@ function showFeedback(result) {
   if (result.is_equivalent) {
     els.feedbackBanner.classList.add("feedback-banner--correct");
     els.feedbackBanner.textContent = "✓ Correct!";
-    els.feedbackHint.textContent = result.hint || "";
-    return;
-  }
-
-  if (inputError) {
+  } else if (inputError) {
     els.feedbackBanner.classList.add("feedback-banner--warning");
     els.feedbackBanner.textContent = "⚠ Input error";
-    els.feedbackHint.textContent = result.hint || "";
-    return;
+  } else {
+    els.feedbackBanner.classList.add("feedback-banner--incorrect");
+    els.feedbackBanner.textContent = "✗ Not quite.";
+    if (state.incorrectAttemptCount >= MAX_ATTEMPTS_BEFORE_ESCALATION) {
+      els.deeperHintLabel.classList.remove("hidden");
+    }
   }
-
-  els.feedbackBanner.classList.add("feedback-banner--incorrect");
-  const label = ERROR_TYPE_LABELS[errorType] || "Check your work";
-  els.feedbackBanner.innerHTML = `✗ Not quite. <span class="error-badge">${escapeHtml(label)}</span>`;
-
-  if (state.hintLevel >= 2) {
-    els.deeperHintLabel.classList.remove("hidden");
-  }
-
   els.feedbackHint.textContent = result.hint || "";
 }
 
-function setSubmitLoading(loading) {
-  els.btnSubmitStep.disabled = loading;
-  els.stepInput.disabled = loading;
-}
-
-function setProblemLoading(loading) {
-  els.btnGetProblem.disabled = loading;
-  els.btnStartSession.disabled = loading;
-  els.problemLoading.classList.toggle("hidden", !loading);
-}
-
-/* =============================================================================
-   VIEW 1 — PROBLEM SELECTION
-   ============================================================================= */
-
-async function loadProblem() {
-  els.problemError.classList.add("hidden");
-  els.startSessionError.classList.add("hidden");
-  els.problemCard.classList.add("hidden");
-  els.btnStartSession.disabled = false;
-  setProblemLoading(true);
-
-  try {
-    const difficulty = els.filterDifficulty.value;
-    const topic = els.filterTopic.value;
-    const problem = await api.getSampleProblem(difficulty, topic);
-    state.currentProblem = problem;
-    renderProblemCard(problem);
-  } catch (err) {
-    els.problemError.classList.remove("hidden");
-  } finally {
-    setProblemLoading(false);
+async function parseResponse(response) {
+  const data = await response.json();
+  if (!response.ok) {
+    const detail = data?.detail ?? data;
+    if (typeof detail === "string") throw new Error(detail);
+    if (detail?.message) throw new Error(detail.message);
+    if (detail?.error) throw new Error(detail.error);
+    throw new Error("Request failed.");
   }
+  return data;
 }
 
-async function handleStartSession() {
-  if (!state.currentProblem) return;
-
-  els.startSessionError.classList.add("hidden");
-  els.btnStartSession.disabled = true;
-
-  try {
-    const data = await api.startSession(state.currentProblem.id);
-    state.sessionId = data.session_id;
-    state.currentProblem = {
-      id: data.problem_id,
-      expression: data.problem_expression,
-      expected_final: data.expected_final,
-      difficulty: state.currentProblem.difficulty,
-      topic: state.currentProblem.topic,
-    };
-    enterActiveSession();
-  } catch {
-    els.startSessionError.classList.remove("hidden");
-    els.btnStartSession.disabled = false;
-  }
+async function startSessionWithExpression(expression) {
+  const response = await fetch(`${API_BASE}/start-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ problem_expression: expression }),
+  });
+  return parseResponse(response);
 }
 
-/* =============================================================================
-   VIEW 2 — ACTIVE SESSION
-   ============================================================================= */
+async function startSessionWithProblemId(problemId) {
+  const response = await fetch(`${API_BASE}/start-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ problem_id: problemId }),
+  });
+  return parseResponse(response);
+}
+
+async function getSampleProblem() {
+  const response = await fetch(`${API_BASE}/sample-problem`);
+  return parseResponse(response);
+}
+
+async function submitStep(sessionId, step) {
+  const response = await fetch(`${API_BASE}/submit-step`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, step }),
+  });
+  return parseResponse(response);
+}
+
+async function deleteSession(sessionId) {
+  if (!sessionId) return;
+  await fetch(`${API_BASE}/session/${sessionId}`, { method: "DELETE" });
+}
 
 function enterActiveSession() {
-  const problem = state.currentProblem;
-  els.sessionExpression.textContent = problem.expression;
-  setBadge(els.sessionDifficulty, problem.difficulty);
-  els.sessionTopic.textContent = problem.topic || "—";
-
+  els.sessionExpression.textContent = state.currentExpression;
+  els.sessionTopic.textContent = state.topic || "algebra";
+  els.sessionStepCounter.textContent = `Step ${state.stepIndex}/${state.stepCount}`;
   els.stepInput.value = "";
-  els.inputError.classList.add("hidden");
   els.feedbackPanel.classList.add("hidden");
+  els.inputError.classList.add("hidden");
   els.attemptHistory.open = false;
-
   updateAttemptTracker();
   renderAttemptHistory();
   showView("session");
   els.stepInput.focus();
 }
 
+async function handleStartSession() {
+  const expression = els.problemInput.value.trim();
+  if (!expression) {
+    els.problemError.textContent = "Please enter a problem expression.";
+    els.problemError.classList.remove("hidden");
+    return;
+  }
+  els.problemError.classList.add("hidden");
+  els.problemLoading.classList.remove("hidden");
+  els.btnStartSession.disabled = true;
+  els.btnGetProblem.disabled = true;
+  try {
+    const data = await startSessionWithExpression(expression);
+    state.problemExpression = data.problem_expression;
+    state.expectedFinal = data.expected_final;
+    state.currentExpression = data.current_expression || data.problem_expression;
+    state.sessionId = data.session_id;
+    state.topic = data.topic || "algebra";
+    state.stepCount = data.step_count || 1;
+    state.stepIndex = 1;
+    enterActiveSession();
+  } catch (err) {
+    els.problemError.textContent = err instanceof Error ? err.message : "Could not start session.";
+    els.problemError.classList.remove("hidden");
+  } finally {
+    els.problemLoading.classList.add("hidden");
+    els.btnStartSession.disabled = false;
+    els.btnGetProblem.disabled = false;
+  }
+}
+
+async function handleTryExample() {
+  els.problemError.classList.add("hidden");
+  els.problemLoading.classList.remove("hidden");
+  els.btnStartSession.disabled = true;
+  els.btnGetProblem.disabled = true;
+  try {
+    const sample = await getSampleProblem();
+    els.problemInput.value = sample.expression;
+    const data = await startSessionWithProblemId(sample.id);
+    state.problemExpression = data.problem_expression;
+    state.expectedFinal = data.expected_final;
+    state.currentExpression = data.current_expression || data.problem_expression;
+    state.sessionId = data.session_id;
+    state.topic = data.topic || sample.topic || "algebra";
+    state.stepCount = data.step_count || 1;
+    state.stepIndex = 1;
+    enterActiveSession();
+  } catch (err) {
+    els.problemError.textContent = err instanceof Error ? err.message : "Could not load sample.";
+    els.problemError.classList.remove("hidden");
+  } finally {
+    els.problemLoading.classList.add("hidden");
+    els.btnStartSession.disabled = false;
+    els.btnGetProblem.disabled = false;
+  }
+}
+
 async function handleSubmitStep() {
   const step = els.stepInput.value.trim();
-
   if (!step) {
     els.inputError.classList.remove("hidden");
     return;
   }
   els.inputError.classList.add("hidden");
-
-  setSubmitLoading(true);
-
+  els.btnSubmitStep.disabled = true;
+  els.stepInput.disabled = true;
   try {
-    const result = await api.submitStep(
-      state.sessionId,
-      step,
-      state.currentProblem.expected_final
-    );
-
+    const result = await submitStep(state.sessionId, step);
     const errorType = result.error_classification?.error_type ?? null;
-    const inputError = isInputError(errorType);
-
+    const isInputError = errorType && INPUT_ERROR_TYPES.has(errorType);
     state.attemptHistory.push({
       step,
-      is_equivalent: result.is_equivalent,
-      error_type: errorType,
+      stepOrder: result.step_index || state.stepIndex,
       hint: result.hint,
-      isInputError: inputError,
+      isEquivalent: result.is_equivalent,
+      isInputError,
     });
-
     if (result.is_equivalent) {
       state.totalAttempts += 1;
-      state.sessionComplete = true;
-      showFeedback(result);
-      updateAttemptTracker(true);
-      renderAttemptHistory();
-      setTimeout(() => finishSessionSolved(), 1500);
-      return;
-    }
-
-    if (!inputError) {
+      state.currentExpression = result.current_expression || step;
+      state.stepIndex = result.step_index || state.stepIndex;
+      if (result.session_complete) {
+        state.sessionComplete = true;
+        showFeedback(result);
+        updateAttemptTracker(true);
+        renderAttemptHistory();
+        setTimeout(showCompleteSolved, 1200);
+        return;
+      }
+      state.stepIndex += 1;
+    } else if (!isInputError && errorType !== "no_progress") {
       state.incorrectAttemptCount += 1;
       state.totalAttempts += 1;
-
-      if (state.incorrectAttemptCount >= MAX_ATTEMPTS_BEFORE_ESCALATION) {
-        state.hintLevel = 2;
-      }
     }
 
     showFeedback(result);
-    updateAttemptTracker();
     renderAttemptHistory();
-
-    if (!inputError) {
-      els.stepInput.value = "";
-    }
-
+    updateAttemptTracker();
+    els.sessionExpression.textContent = state.currentExpression;
+    els.sessionStepCounter.textContent = `Step ${Math.min(
+      state.stepIndex,
+      state.stepCount
+    )}/${state.stepCount}`;
     if (state.incorrectAttemptCount >= MAX_ATTEMPTS_BEFORE_REVEAL) {
       state.sessionComplete = true;
-      setTimeout(() => finishSessionEnded(), 2000);
+      setTimeout(showCompleteEnded, 1500);
+      return;
     }
+    if (!isInputError) els.stepInput.value = "";
   } catch (err) {
     els.feedbackPanel.classList.remove("hidden");
     els.feedbackBanner.className = "feedback-banner feedback-banner--warning";
     els.feedbackBanner.textContent = "⚠ Request failed";
-    els.feedbackHint.textContent =
-      err instanceof Error ? err.message : "Please try again.";
-    els.deeperHintLabel.classList.add("hidden");
+    els.feedbackHint.textContent = err instanceof Error ? err.message : "Please try again.";
   } finally {
-    setSubmitLoading(false);
-    if (!state.sessionComplete) {
-      els.stepInput.focus();
-    }
+    els.btnSubmitStep.disabled = false;
+    els.stepInput.disabled = false;
+    if (!state.sessionComplete) els.stepInput.focus();
   }
 }
 
 function handleGiveUp() {
-  const confirmed = window.confirm(
-    "Are you sure? This will end your session."
-  );
-  if (!confirmed) return;
-
-  state.endedByGiveUp = true;
+  if (!window.confirm("Are you sure? This will end your session.")) return;
   state.sessionComplete = true;
-
-  els.feedbackPanel.classList.remove("hidden");
-  els.feedbackBanner.className = "feedback-banner feedback-banner--incorrect";
-  els.feedbackBanner.textContent = "✗ Session ended";
-  els.deeperHintLabel.classList.add("hidden");
-  els.feedbackHint.textContent = `The correct answer was: ${state.currentProblem.expected_final}`;
-
-  setTimeout(() => finishSessionEnded(), 2000);
-}
-
-/* =============================================================================
-   VIEW 3 — SESSION COMPLETE
-   ============================================================================= */
-
-async function finishSessionSolved() {
-  if (state.sessionId) {
-    await api.deleteSession(state.sessionId);
-  }
-  showCompleteSolved();
-}
-
-async function finishSessionEnded() {
-  if (state.sessionId) {
-    await api.deleteSession(state.sessionId);
-  }
   showCompleteEnded();
 }
 
-function showCompleteSolved() {
-  const problem = state.currentProblem;
-  els.completeSolvedExpression.textContent = `You simplified: ${problem.expression}`;
-  els.completeSolvedAnswer.textContent = `Answer: ${problem.expected_final}`;
-  const attempts = state.totalAttempts;
-  els.completeSolvedStats.textContent = `Solved in ${attempts} attempt${attempts === 1 ? "" : "s"}`;
-
+async function showCompleteSolved() {
+  await deleteSession(state.sessionId);
+  els.completeSolvedExpression.textContent = `Solved: ${state.problemExpression}`;
+  els.completeSolvedAnswer.textContent = `Final: ${state.expectedFinal}`;
+  els.completeSolvedStats.textContent = `Solved in ${state.totalAttempts} attempt${
+    state.totalAttempts === 1 ? "" : "s"
+  }.`;
   els.completeSolved.classList.remove("hidden");
   els.completeEnded.classList.add("hidden");
   showView("complete");
 }
 
-function showCompleteEnded() {
-  const problem = state.currentProblem;
-  els.completeEndedAnswer.textContent = `The correct answer was: ${problem.expected_final}`;
-  els.completeEndedStats.textContent = `You made ${state.incorrectAttemptCount} incorrect attempt${state.incorrectAttemptCount === 1 ? "" : "s"}`;
-
+async function showCompleteEnded() {
+  await deleteSession(state.sessionId);
+  els.completeEndedAnswer.textContent = `Final answer: ${state.expectedFinal}`;
+  els.completeEndedStats.textContent = `Incorrect attempts: ${state.incorrectAttemptCount}.`;
   els.completeEnded.classList.remove("hidden");
   els.completeSolved.classList.add("hidden");
   showView("complete");
 }
 
-async function handleTryAnother() {
+function handleTryAnother() {
   resetState();
+  els.problemInput.value = "";
   els.completeSolved.classList.add("hidden");
   els.completeEnded.classList.add("hidden");
   showView("selection");
-  await loadProblem();
 }
 
-/* =============================================================================
-   INITIALIZATION
-   ============================================================================= */
-
-els.btnGetProblem.addEventListener("click", loadProblem);
 els.btnStartSession.addEventListener("click", handleStartSession);
+els.btnGetProblem.addEventListener("click", handleTryExample);
 els.btnSubmitStep.addEventListener("click", handleSubmitStep);
 els.btnGiveUp.addEventListener("click", handleGiveUp);
 els.btnTryAnother.addEventListener("click", handleTryAnother);
-
 els.stepInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !els.btnSubmitStep.disabled) {
-    handleSubmitStep();
-  }
+  if (event.key === "Enter" && !els.btnSubmitStep.disabled) handleSubmitStep();
 });
-
-loadProblem();

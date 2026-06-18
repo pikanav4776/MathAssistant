@@ -8,65 +8,49 @@
   </head>
   <body>
     <main class="app">
-      <!-- VIEW 1: Problem Selection -->
+      <!-- VIEW 1: Start Session -->
       <section id="view-problem-selection" class="view">
         <header class="view-header">
           <h1 class="app-title">MathAssistant</h1>
-          <p class="app-subtitle">Algebra Step Validator</p>
+          <p class="app-subtitle">Algebra Co-Solving (v0.3)</p>
         </header>
 
-        <div class="filters">
-          <label class="filter-label">
-            Difficulty
-            <select id="filter-difficulty">
-              <option value="">All</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-          </label>
-          <label class="filter-label">
-            Topic
-            <select id="filter-topic">
-              <option value="">All</option>
-              <option value="distribution">Distribution</option>
-              <option value="simplification">Simplification</option>
-            </select>
-          </label>
+        <div class="input-area">
+          <label for="problem-input" class="input-label">Problem:</label>
+          <input
+            type="text"
+            id="problem-input"
+            class="step-input"
+            placeholder="e.g. 2(x+3)"
+            autocomplete="off"
+          />
+          <p class="status-message">
+            Use keyboard algebra only: letters, digits, + - * / ^ and parentheses.
+          </p>
         </div>
 
-        <button type="button" id="btn-get-problem" class="btn btn-primary">
-          Get a Problem
+        <button type="button" id="btn-start-session" class="btn btn-primary">
+          Start Session
         </button>
 
-        <p id="problem-loading" class="status-message hidden">Finding a problem...</p>
-        <p id="problem-error" class="status-message status-error hidden">
-          Could not load a problem. Try again.
-        </p>
+        <button type="button" id="btn-get-problem" class="link-button">
+          Try an example from library
+        </button>
 
-        <article id="problem-card" class="problem-card hidden">
-          <p id="problem-expression" class="problem-expression"></p>
-          <div class="problem-meta">
-            <span id="problem-difficulty" class="badge"></span>
-            <span id="problem-topic" class="tag"></span>
-          </div>
-          <button type="button" id="btn-start-session" class="btn btn-primary">
-            Start Session
-          </button>
-          <p id="start-session-error" class="inline-error hidden">
-            Could not start session. Please try again.
-          </p>
-        </article>
+        <p id="problem-loading" class="status-message hidden">Starting session...</p>
+        <p id="problem-error" class="status-message status-error hidden">
+          Could not start session. Try again.
+        </p>
       </section>
 
       <!-- VIEW 2: Active Session -->
       <section id="view-active-session" class="view hidden">
         <div class="problem-bar">
-          <p class="problem-bar-label">Simplify:</p>
+          <p class="problem-bar-label">Current expression:</p>
           <div id="session-expression" class="expression-box"></div>
           <div class="problem-meta">
-            <span id="session-difficulty" class="badge"></span>
             <span id="session-topic" class="tag"></span>
+            <span id="session-step-counter" class="tag"></span>
           </div>
         </div>
 
@@ -82,7 +66,7 @@
         </div>
 
         <div class="input-area">
-          <label for="step-input" class="input-label">Your answer:</label>
+          <label for="step-input" class="input-label">Your step:</label>
           <input
             type="text"
             id="step-input"
@@ -131,7 +115,7 @@
         </div>
 
         <button type="button" id="btn-try-another" class="btn btn-primary">
-          Try another problem
+          Start a new session
         </button>
       </section>
     </main>

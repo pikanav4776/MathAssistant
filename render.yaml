@@ -8,6 +8,7 @@
 #   Backend (mathassistant-api):
 #     DATABASE_URL  — Neon PostgreSQL connection string (include ?sslmode=require)
 #     CORS_ORIGINS  — Frontend public URL, e.g. https://mathassistant-frontend.onrender.com
+#     SENTRY_DSN    — Optional Sentry DSN (sync: false)
 #   Frontend (mathassistant-frontend):
 #     API_BASE_URL  — Backend public HTTPS URL, e.g. https://mathassistant-api.onrender.com
 
@@ -17,12 +18,14 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /
+    startCommand: alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         sync: false
       - key: CORS_ORIGINS
+        sync: false
+      - key: SENTRY_DSN
         sync: false
       - key: PYTHON_VERSION
         value: "3.11.9"

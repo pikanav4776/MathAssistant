@@ -2,13 +2,28 @@
 
 **Version:** v0.2 (MVP)
 
+## Summary
+
 Algebra step-validation tutor — guides students with hints instead of giving full answers.
 
 MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreSQL). Students submit one algebraic step at a time; the backend parses, normalizes, compares, classifies errors, and returns contextual hints. It is **not** a chatbot or LLM answer engine in the current MVP.
 
+**MVP scope:** algebra only, structured text input (no OCR), seed problem library (no auto-generation). See [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for full product scope and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design.
+
 ---
 
-## Quick start
+## Tech stack
+
+| Layer | Technology |
+|-------|------------|
+| **Backend** | Python 3.11+, FastAPI, SymPy |
+| **Frontend** | Vanilla HTML/CSS/JS (`frontend/`); legacy Next.js in `app/` |
+| **Database** | PostgreSQL via SQLAlchemy |
+| **Deployment** | Render (API + static site), Neon (PostgreSQL), GitHub Actions (CI) |
+
+---
+
+## How to run it
 
 ### Prerequisites
 
@@ -24,7 +39,12 @@ Create a database and set `DATABASE_URL` in `backend/.env` (see `backend/.env.ex
 DATABASE_URL=postgresql://user:password@localhost:5433/mathassistant
 ```
 
-Tables are created and seed data loaded on backend startup.
+Tables are created and seed data loaded on backend startup when using a **local**
+database (`DATABASE_URL` with localhost, or `ENVIRONMENT=development`, or
+`SKIP_MIGRATIONS=true`). For production/staging, schema is applied by
+`alembic upgrade head` on deploy; see
+[documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt)
+and [documentation/Database_Operations.md](documentation/Database_Operations.md).
 
 ### 2. Backend (port 8000)
 
@@ -42,9 +62,7 @@ Or manually:
 python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Verify: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-
-Interactive API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+Verify: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) · Readiness: [http://127.0.0.1:8000/ready](http://127.0.0.1:8000/ready) · API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ### 3. Frontend (port 3000)
 
@@ -71,7 +89,11 @@ See [frontend/README.md](frontend/README.md) for the full user flow.
 
 ---
 
-## How it works (one request)
+## How it works
+
+### Backend
+
+Each student step flows through a deterministic validation pipeline:
 
 ```text
 Student step (^ for exponents, e.g. x^2)
@@ -79,97 +101,18 @@ Student step (^ for exponents, e.g. x^2)
   → classify error (if wrong) → generate hint → JSON response
 ```
 
-After **3** incorrect math attempts, hints escalate. After **5**, the expected final answer may be appended to the hint.
+After **3** incorrect math attempts, hints escalate. After **5**, the expected final answer may be appended to the hint. Input notation uses `^` for exponents (`x^2`), not `**`.
 
----
+### Frontend
 
-## Project structure
+The primary UI in `frontend/` loads a random problem, starts a tutoring session, and submits steps to the backend. It displays correctness, error types, and hints. See [frontend/README.md](frontend/README.md) for the user flow.
 
-```text
-MathAssistant/
-├── backend/           FastAPI app, SymPy engine, PostgreSQL models
-│   ├── main.py        API + validation pipeline
-│   ├── db/            SQLAlchemy models and seed data
-│   └── tests/         pytest suite and evaluation runners
-├── frontend/          Primary UI (HTML/CSS/JS)
-├── app/               Legacy Next.js UI
-├── documentation/     Product and architecture specs
-├── reports/           Evaluation reports
-└── scripts/           Dataset verification utilities
-```
+### Database
 
----
+PostgreSQL stores problems, sessions, attempts, and wrong-answer benchmarks. Tables are defined in `backend/db/models.py`. Session state (attempt counts, hint level) persists across requests. Production schema is managed with Alembic; see [documentation/Database_Operations.md](documentation/Database_Operations.md).
 
-## API overview
+### Deployment
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/` | Health check |
-| `GET` | `/sample-problem` | Random problem (optional `difficulty`, `topic` filters) |
-| `GET` | `/problem/{problem_id}` | Fetch problem by ID |
-| `POST` | `/problem` | Create problem (admin; no auth yet) |
-| `POST` | `/start-session` | Start tutoring session |
-| `POST` | `/submit-step` | Validate a student step |
-| `GET` | `/session/{session_id}` | Session summary + attempt history |
-| `DELETE` | `/session/{session_id}` | Delete session and attempts |
+Production runs on **Render** (Python API + static frontend) with **Neon** for PostgreSQL. **GitHub Actions** runs the test suite on every PR and push to `main`; merges to `main` trigger Render auto-deploy.
 
-Full schemas: `/docs` on the running backend.
-
-**Input notation:** use `^` for exponents (`x^2`), not `**`.
-
----
-
-## Testing
-
-From `backend/`:
-
-```powershell
-pytest
-```
-
-Evaluation benchmark:
-
-```powershell
-python tests/run_evaluation.py
-```
-
-Latest results: [reports/evaluation_report.md](reports/evaluation_report.md)
-
----
-
-## Deploying to Render + Neon
-
-Use the [Render Blueprint](render.yaml) at the repo root to deploy the backend (Python web service) and frontend (static site). PostgreSQL can live on [Neon](https://neon.tech) — copy the connection string into Render.
-
-1. Connect this Git repo in the Render Dashboard and apply the Blueprint.
-2. When prompted, set the secret env vars below (or add them later under each service → **Environment**).
-
-| Service | Variable | Example / notes |
-|---------|----------|-----------------|
-| `mathassistant-api` | `DATABASE_URL` | Neon pooled URL with `?sslmode=require` |
-| `mathassistant-api` | `CORS_ORIGINS` | `https://mathassistant-frontend.onrender.com` (your static site URL) |
-| `mathassistant-frontend` | `API_BASE_URL` | `https://mathassistant-api.onrender.com` (your backend URL, **HTTPS**, no trailing slash) |
-
-After deploy, open the frontend URL. The static-site build writes `frontend/config.js` from `API_BASE_URL`. Local dev is unchanged: `config.js` defaults to `http://127.0.0.1:8000` and `backend/start.ps1` still uses `--reload`.
-
-See comments in [render.yaml](render.yaml) and [frontend/README.md](frontend/README.md) for details.
-
----
-
-## Documentation
-
-| Document | Contents |
-|----------|----------|
-| [documentation/Product_Spec.txt](documentation/Product_Spec.txt) | Problem statement, goals, users, MVP scope, metrics |
-| [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) | System design, data models, API details, risks |
-| [documentation/Current_Plan.txt](documentation/Current_Plan.txt) | Phased development plan and status |
-| [frontend/README.md](frontend/README.md) | Frontend setup and user flow |
-
----
-
-## MVP limits
-
-- Algebra only (no geometry, calculus, statistics)
-- Structured text input (no OCR)
-- No automatic problem generation (library + seed data only)
-- Systems limited to modest complexity (see product spec)
+For CI/CD setup, Render Blueprint steps, staging (`render-staging.yaml`), environment variables, branch protection, Sentry, migrations, and Neon configuration, see [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt).
