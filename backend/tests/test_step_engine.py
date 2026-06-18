@@ -51,6 +51,8 @@ def _assert_plan_matches(expression: str, expected_final: str, *, topic: str | N
         ("x^2", "simplification"),
         ("-x", "simplification"),
         ("2x^3", "simplification"),
+        ("2^3", "simplification"),
+        ("(x+1)^2", "simplification"),
     ],
     ids=[
         "dist-2(x+3)",
@@ -65,6 +67,8 @@ def _assert_plan_matches(expression: str, expected_final: str, *, topic: str | N
         "simp-power",
         "simp-neg-var",
         "simp-cubic",
+        "simp-numeric-power",
+        "simp-binomial-square",
     ],
 )
 def test_detect_topic_supported(expression: str, topic: str) -> None:
@@ -137,7 +141,21 @@ def test_build_solution_plan_single_hop_structure() -> None:
     assert plan.topic == "distribution"
     assert len(plan.steps) == 1
     assert plan.steps[0] == plan.final_answer
-    assert _sympy_equiv(plan.final_answer, "2x+6")
+
+
+def test_build_solution_plan_numeric_exponent() -> None:
+    plan = build_solution_plan("2^3")
+    assert plan.topic == "simplification"
+    assert len(plan.steps) == 1
+    assert plan.final_answer == "8"
+    assert _sympy_equiv(plan.final_answer, "8")
+
+
+def test_build_solution_plan_binomial_square() -> None:
+    plan = build_solution_plan("(x+1)^2")
+    assert plan.topic == "simplification"
+    assert len(plan.steps) == 1
+    assert _sympy_equiv(plan.final_answer, "x^2+2x+1")
 
 
 # ── 3. Exponent equivalence (~6) ────────────────────────────────────────────

@@ -31,13 +31,13 @@ TECH STACK
 ================================================================================
 
 Frontend (primary):
-	vanilla HTML / CSS / JavaScript in frontend/
+	React + TypeScript + Vite in frontend/
 
-Frontend (legacy):
-	Next.js, TypeScript, Tailwind CSS in app/
+Frontend (deprecated):
+	Next.js demo in app/ (superseded by frontend/)
 
 Math rendering:
-	plain text today; KaTeX planned
+	KaTeX (display-only; keyboard algebra input unchanged)
 
 Backend:
 	Python, FastAPI
@@ -64,8 +64,8 @@ MathAssistant/
 	  expression_preprocess.py  keyboard input normalization
 	  db/              SQLAlchemy models and seed data
 	  tests/           pytest suite and evaluation runners
-	frontend/          Primary UI (HTML/CSS/JS)
-	app/               Legacy Next.js UI
+	frontend/          Primary UI (React + Vite)
+	app/               Deprecated Next.js demo
 	documentation/     Product and architecture specs
 	reports/           Evaluation reports
 	scripts/           Dataset verification utilities
@@ -299,7 +299,7 @@ CI/CD
 
 How CI and CD work together:
 
-	Feature branch → open PR → GitHub Actions runs pytest (CI)
+	Feature branch → open PR → GitHub Actions runs pytest + frontend build (CI)
 	  → merge to main (blocked until the CI check passes, if branch protection is on)
 	  → push to main re-runs CI and triggers Render auto-deploy (CD)
 	  → Render builds and deploys mathassistant-api + mathassistant-frontend
@@ -315,7 +315,11 @@ GitHub Actions (CI)
 Workflow: .github/workflows/ci.yml
 Triggers: every pull request; pushes to main
 
-Steps:
+Jobs:
+	frontend — npm ci and npm run build in frontend/ (Vite production bundle verification)
+	test     — pytest backend/tests/ with PostgreSQL service container
+
+Backend test steps:
 	1. Start PostgreSQL 16 service container (test / test, database mathassistant).
 	2. Check out the repo and install Python 3.11.
 	3. Install dependencies from backend/requirements.txt and
@@ -332,14 +336,14 @@ GitHub branch protection (require CI before merge):
 	3. Branch name pattern: main
 	4. Enable Require a pull request before merging (recommended).
 	5. Enable Require status checks to pass before merging.
-	6. In the status checks search box, type CI and select the check named
-	   CI (workflow file: .github/workflows/ci.yml, job id: test).
-	   If it does not appear yet, push a PR that runs CI once, then return here.
+	6. In the status checks search box, type CI and select the checks named
+	   frontend and test (workflow file: .github/workflows/ci.yml).
+	   If they do not appear yet, push a PR that runs CI once, then return here.
 	7. Optional: Require branches to be up to date before merging.
 	8. Save changes.
 
 	Merges to main then trigger Render auto-deploy only after the CI workflow
-	(job test) succeeds.
+	(jobs frontend and test) succeed.
 
 --------------------------------------------------------------------------------
 Render (CD)
@@ -379,7 +383,7 @@ Schema on deploy:
 	| mathassistant-api        | CORS_ORIGINS   | https://mathassistant-frontend.onrender.com (static site URL, no trailing slash) |
 	| mathassistant-api        | SENTRY_DSN     | Optional. From sentry.io project → Client Keys (DSN). Omit to disable. |
 	| mathassistant-api        | SENTRY_TRACES_SAMPLE_RATE | Optional. Default 0.1 when SENTRY_DSN is set. |
-	| mathassistant-frontend   | API_BASE_URL   | https://mathassistant-api.onrender.com (backend URL, HTTPS, no trailing slash) |
+	| mathassistant-frontend   | API_BASE_URL   | https://mathassistant-api.onrender.com (backend URL, HTTPS, no trailing slash). Injected at build time as VITE_API_BASE_URL. |
 
 	After the first deploy, copy actual Render URLs from each service Settings page
 	if default names differ.
@@ -406,9 +410,9 @@ Schema on deploy:
 	Render Events / Logs tab shows build and deploy status on failure.
 
 Static-site build note:
-	The static-site build writes frontend/config.js from API_BASE_URL. Local dev is
-	unchanged: config.js defaults to http://127.0.0.1:8000 and backend/start.ps1
-	still uses --reload.
+	The static site runs `npm ci && VITE_API_BASE_URL=$API_BASE_URL npm run build`
+	in frontend/ and publishes frontend/dist/. Local dev uses npm run dev on port 3000
+	with VITE_API_BASE_URL defaulting to http://127.0.0.1:8000 (see frontend/.env.example).
 
 --------------------------------------------------------------------------------
 Neon database setup
@@ -446,7 +450,7 @@ Apply second Blueprint:
 	4. Set secret env vars for staging services:
 	   - mathassistant-api-staging: DATABASE_URL (Neon staging branch),
 	     CORS_ORIGINS (staging frontend URL), optional SENTRY_DSN.
-	   - mathassistant-frontend-staging: API_BASE_URL (staging backend URL).
+	   - mathassistant-frontend-staging: API_BASE_URL (staging backend URL; injected as VITE_API_BASE_URL at build).
 	5. Apply. Point each service's deploy branch to main (or a staging branch if
 	   you prefer manual promote).
 
@@ -514,7 +518,7 @@ FUTURE EXTENSIONS
 	OCR pipeline
 	multi-subject expansion
 	adaptive tutoring system
-	KaTeX math rendering in frontend
+	KaTeX math rendering in frontend (display-only expressions)
 	concept re-teaching workflows
 	personalized learning analytics
 

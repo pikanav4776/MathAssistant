@@ -17,7 +17,7 @@ MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreS
 | Layer | Technology |
 |-------|------------|
 | **Backend** | Python 3.11+, FastAPI, SymPy |
-| **Frontend** | Vanilla HTML/CSS/JS (`frontend/`); legacy Next.js in `app/` |
+| **Frontend** | React + TypeScript (Vite) in `frontend/`; deprecated Next.js demo in `app/` |
 | **Database** | PostgreSQL via SQLAlchemy |
 | **Deployment** | Render (API + static site), Neon (PostgreSQL), GitHub Actions (CI) |
 
@@ -29,7 +29,7 @@ MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreS
 
 - **Python 3.11+**
 - **PostgreSQL**
-- **Node.js** (only if you use the legacy Next.js UI in `app/`)
+- **Node.js 18+** (for the Vite frontend in `frontend/`)
 
 ### 1. Database
 
@@ -66,7 +66,15 @@ Verify: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) · Readines
 
 ### 3. Frontend (port 3000)
 
-**Primary UI** — vanilla HTML/JS in `frontend/`:
+**Primary UI** — React + Vite in `frontend/`:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Or use the helper script:
 
 ```powershell
 cd frontend
@@ -77,15 +85,16 @@ Open [http://localhost:3000](http://localhost:3000). You should see **"Algebra C
 
 > Do **not** open `frontend/index.html` via `file://` — the browser will block API calls.
 > Do **not** use port 8000 for the frontend; that is the backend.
+> Do **not** run `npm run dev` from the repo root — that starts the deprecated Next.js demo in `app/`.
 
-**Legacy UI** — Next.js demo in `app/` (optional):
+**Deprecated** — Next.js demo in `app/` (superseded by `frontend/`):
 
 ```powershell
 npm install
 npm run dev
 ```
 
-See [frontend/README.md](frontend/README.md) for the full user flow.
+See [frontend/README.md](frontend/README.md) for the full user flow and production deploy notes.
 
 ---
 
@@ -105,7 +114,7 @@ Multi-hop problems advance through intermediate canonical steps (e.g. `2(x+3)+4`
 
 ### Frontend
 
-The primary UI in `frontend/` loads a random problem, starts a tutoring session, and submits steps to the backend. It displays correctness, error types, and hints. See [frontend/README.md](frontend/README.md) for the user flow.
+The primary UI in `frontend/` is a React + Vite app. It loads a random problem, starts a tutoring session, and submits steps to the backend. It displays correctness, error types, and hints (with KaTeX for math display). See [frontend/README.md](frontend/README.md) for the user flow.
 
 ### Database
 
@@ -113,6 +122,6 @@ PostgreSQL stores problems, sessions, attempts, and wrong-answer benchmarks. Tab
 
 ### Deployment
 
-Production runs on **Render** (Python API + static frontend) with **Neon** for PostgreSQL. **GitHub Actions** runs the test suite on every PR and push to `main`; merges to `main` trigger Render auto-deploy.
+Production runs on **Render** (Python API + Vite static frontend) with **Neon** for PostgreSQL. **GitHub Actions** runs backend tests and a frontend build on every PR and push to `main`; merges to `main` trigger Render auto-deploy.
 
 For CI/CD setup, Render Blueprint steps, staging (`render-staging.yaml`), environment variables, branch protection, Sentry, migrations, and Neon configuration, see [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt).

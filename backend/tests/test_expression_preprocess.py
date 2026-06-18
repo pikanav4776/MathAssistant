@@ -69,3 +69,19 @@ def test_display_expression_compact_keyboard_form() -> None:
     assert canonical_step_display("(8x + 6x^2 + 2 ) ( 8*x^2 + 22x +19)") == (
         "(8x+6x^2+2)(8x^2+22x+19)"
     )
+
+
+@pytest.mark.parametrize(
+    "expression,expected_final",
+    [
+        ("2^3", "8"),
+        ("x^2", "x^2"),
+        ("(x+1)^2", "x^2+2x+1"),
+    ],
+    ids=["numeric-power", "symbolic-power", "binomial-square"],
+)
+def test_exponent_expressions_supported(expression: str, expected_final: str) -> None:
+    assert detect_topic(expression) == "simplification"
+    plan = build_solution_plan(expression)
+    assert plan.topic == "simplification"
+    assert _sympy_equiv(plan.final_answer, expected_final)

@@ -225,6 +225,24 @@ def test_start_session_canonicalizes_messy_expression(
     assert body["step_count"] == 2
 
 
+def test_start_session_accepts_numeric_exponent(client: TestClient) -> None:
+    response = client.post("/start-session", json={"problem_expression": "2^3"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["problem_expression"] == "2^3"
+    assert body["expected_final"] == "8"
+    assert body["step_count"] == 1
+
+
+def test_submit_step_numeric_exponent(client: TestClient) -> None:
+    start = client.post("/start-session", json={"problem_expression": "2^3"})
+    assert start.status_code == 200
+    session_id = start.json()["session_id"]
+    result = _submit(client, session_id, "8")
+    assert result["is_equivalent"] is True
+    assert result["session_complete"] is True
+
+
 def test_foil_correct_expand_still_works(
     client: TestClient,
     db_session: Session,

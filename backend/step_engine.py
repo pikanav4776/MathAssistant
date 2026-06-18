@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import re
 
 from expression_preprocess import display_expression, preprocess_for_sympy
-from sympy import Add, Mul, collect, expand, simplify, sympify
+from sympy import Add, Mul, Pow, collect, expand, simplify, sympify
 from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
 
@@ -77,6 +77,8 @@ def detect_topic(expression: str) -> str | None:
         return "simplification"
 
     if expr.free_symbols:
+        return "simplification"
+    if isinstance(expr, Pow):
         return "simplification"
     return None
 

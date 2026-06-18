@@ -10,11 +10,11 @@ See the root [README.md](../README.md) for full project setup (database, backend
 2. **PostgreSQL** configured via `backend/.env` (`DATABASE_URL`; see `backend/.env.example`)
 3. **Node.js** 18+ for the Vite dev server
 
-## Development (React app — recommended)
+## Development
 
 **Do not open `index.html` directly** (`file://`) — browsers block API requests.
 
-### IMPORTANT — correct ports
+### Ports
 
 | Service | Port | Command | URL |
 |---------|------|---------|-----|
@@ -22,12 +22,19 @@ See the root [README.md](../README.md) for full project setup (database, backend
 | **Frontend** (Vite) | **3000** | `npm run dev` from `frontend/` | http://localhost:3000 |
 
 **Do NOT** run `python -m http.server 8000` — that steals the backend port.
-**Do NOT** run `npm run dev` from the repo root — that is the legacy Next.js app in `app/`, not this frontend.
+**Do NOT** run `npm run dev` from the repo root — that is the deprecated Next.js demo in `app/`, not this frontend.
 
 ```powershell
 cd frontend
 npm install
 npm run dev
+```
+
+Or:
+
+```powershell
+cd frontend
+.\start.ps1
 ```
 
 Open: **http://localhost:3000**
@@ -55,33 +62,27 @@ npm run build
 
 Output goes to `frontend/dist/`. Preview locally with `npm run preview`.
 
+## Production deploy (Render)
+
+The static site service (`mathassistant-frontend` in [render.yaml](../render.yaml)) builds from this directory:
+
+1. **Build command:** `npm ci && VITE_API_BASE_URL=$API_BASE_URL npm run build`
+2. **Publish path:** `dist/`
+3. **Dashboard env var:** `API_BASE_URL` — backend public HTTPS URL (e.g. `https://mathassistant-api.onrender.com`, no trailing slash). Render injects this as `VITE_API_BASE_URL` at build time.
+
+Staging uses the same pattern via [render-staging.yaml](../render-staging.yaml) (`mathassistant-frontend-staging`).
+
+Set the backend `CORS_ORIGINS` env var to your frontend URL (e.g. `https://mathassistant-frontend.onrender.com`) so the browser can call the API. Port **3000** is already allowed in backend defaults for local dev.
+
+After deploy, verify:
+
+- Frontend loads at the Render static site URL.
+- Browser network tab shows API calls to `API_BASE_URL` (not localhost).
+- No CORS errors when submitting a step.
+
 ## Legacy vanilla app
 
-The original HTML/CSS/JS UI is kept for reference:
-
-- Root copies: `app.js`, `style.css`, `config.js`
-- Mirror in `legacy/` (includes the old `index.html` shell)
-
-Serve the legacy app with Python (no build step):
-
-```powershell
-cd frontend
-.\start.ps1
-```
-
-Legacy uses `window.API_BASE` from `config.js` instead of `VITE_API_BASE_URL`.
-
-## Production API URL
-
-**Stage 1:** Production still deploys the vanilla static site via root [render.yaml](../render.yaml) (unchanged). Stage 3 will switch Render to the Vite build output.
-
-For the React app locally, set `VITE_API_BASE_URL` in `.env`. For legacy deployment, Render overwrites `config.js` from the `API_BASE_URL` env var:
-
-```bash
-echo "window.API_BASE = \"$API_BASE_URL\";" > config.js
-```
-
-Set the backend `CORS_ORIGINS` env var to your frontend URL so the browser can call the API (see `backend/.env.example`). Port **3000** is already allowed for local dev.
+The original HTML/CSS/JS UI is preserved under `legacy/` for reference only (not deployed). It used `window.API_BASE` from `config.js`; the React app uses `VITE_API_BASE_URL` instead.
 
 ## User flow
 
@@ -119,6 +120,7 @@ frontend/
   package.json            — npm scripts and dependencies
   vite.config.ts          — dev server on port 3000
   .env.example            — VITE_API_BASE_URL template
+  start.ps1               — npm run dev helper
   src/
     App.tsx               — view router
     main.tsx              — React entry
@@ -129,8 +131,7 @@ frontend/
     views/                — ProblemSelection, ActiveSession, SessionComplete
     components/           — AttemptTracker, FeedbackPanel, MathExpression, etc.
     utils/algebraToLatex.ts — keyboard algebra → LaTeX (display only)
-    styles/global.css     — ported from style.css
-  legacy/                 — vanilla index.html mirror
-  app.js, style.css, ...  — original vanilla files (reference)
+    styles/global.css     — app styles
+  legacy/                 — original vanilla HTML/CSS/JS (reference only)
   README.md               — this file
 ```

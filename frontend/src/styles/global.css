@@ -353,11 +353,20 @@ body {
 }
 
 .complete-expression {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
   word-break: break-word;
 }
 
+.complete-expression .math-expression {
+  display: inline;
+  vertical-align: baseline;
+}
+
 .complete-expression .katex {
-  font-size: 1rem;
+  font-size: inherit;
 }
 
 .complete-stats {

@@ -11,6 +11,7 @@
 #     SENTRY_DSN    — Optional; use a separate Sentry project/environment for staging
 #   Frontend (mathassistant-frontend-staging):
 #     API_BASE_URL  — Staging backend URL, e.g. https://mathassistant-api-staging.onrender.com
+#                     Injected at build time as VITE_API_BASE_URL for the Vite bundle.
 
 services:
   - type: web
@@ -36,8 +37,8 @@ services:
     name: mathassistant-frontend-staging
     runtime: static
     rootDir: frontend
-    buildCommand: 'echo "window.API_BASE = \"$API_BASE_URL\";" > config.js'
-    staticPublishPath: .
+    buildCommand: npm ci && VITE_API_BASE_URL=$API_BASE_URL npm run build
+    staticPublishPath: dist
     envVars:
       - key: API_BASE_URL
         sync: false
