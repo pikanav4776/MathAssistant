@@ -19,3 +19,7 @@ alembic>=1.13.0
 
 # Error monitoring (optional — initialized when SENTRY_DSN is set)
 sentry-sdk[fastapi]>=2.0.0,<3.0.0
+
+httpx
+# Test dependencies
+pytest>=7.0.0
