@@ -410,6 +410,11 @@ body {
   font-size: 1rem;
 }
 
+.complete-expression {
+  font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+  word-break: break-word;
+}
+
 .complete-stats {
   margin: 1rem 0 0;
   color: var(--color-subtle);

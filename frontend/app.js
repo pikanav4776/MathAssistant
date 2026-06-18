@@ -13,7 +13,10 @@ const INPUT_ERROR_TYPES = new Set([
   "engine_error",
 ]);
 
+const NON_COUNTING_ERROR_TYPES = new Set(["no_progress", "term_reorder"]);
+
 const state = {
+  problemId: "",
   problemExpression: "",
   expectedFinal: "",
   currentExpression: "",
@@ -59,12 +62,22 @@ const els = {
   completeSolvedExpression: document.getElementById("complete-solved-expression"),
   completeSolvedAnswer: document.getElementById("complete-solved-answer"),
   completeSolvedStats: document.getElementById("complete-solved-stats"),
+  completeEndedExpression: document.getElementById("complete-ended-expression"),
   completeEndedAnswer: document.getElementById("complete-ended-answer"),
   completeEndedStats: document.getElementById("complete-ended-stats"),
   btnTryAnother: document.getElementById("btn-try-another"),
 };
 
+function countsTowardAttemptLimit(errorType) {
+  return (
+    errorType != null &&
+    !INPUT_ERROR_TYPES.has(errorType) &&
+    !NON_COUNTING_ERROR_TYPES.has(errorType)
+  );
+}
+
 function resetState() {
+  state.problemId = "";
   state.problemExpression = "";
   state.expectedFinal = "";
   state.currentExpression = "";
@@ -158,6 +171,9 @@ async function parseResponse(response) {
     const detail = data?.detail ?? data;
     if (typeof detail === "string") throw new Error(detail);
     if (detail?.message) throw new Error(detail.message);
+    if (detail?.error === "unsupported_problem" && detail?.message) {
+      throw new Error(detail.message);
+    }
     if (detail?.error) throw new Error(detail.error);
     throw new Error("Request failed.");
   }
@@ -201,14 +217,51 @@ async function deleteSession(sessionId) {
   await fetch(`${API_BASE}/session/${sessionId}`, { method: "DELETE" });
 }
 
+async function fetchSession(sessionId) {
+  const response = await fetch(`${API_BASE}/session/${sessionId}`);
+  const data = await response.json();
+  if (!response.ok || data.error) {
+    throw new Error(data.error || "Could not load session.");
+  }
+  return data;
+}
+
+async function fetchProblem(problemId) {
+  const response = await fetch(`${API_BASE}/problem/${problemId}`);
+  return parseResponse(response);
+}
+
+function applyStartSessionData(data, fallbackTopic = "") {
+  state.problemId = data.problem_id || "";
+  state.problemExpression = data.problem_expression;
+  state.expectedFinal = data.expected_final;
+  state.currentExpression = data.current_expression || data.problem_expression;
+  state.sessionId = data.session_id;
+  state.topic = data.topic || fallbackTopic || "algebra";
+  state.stepCount = data.step_count || 1;
+  state.stepIndex = 1;
+  state.incorrectAttemptCount = 0;
+  state.totalAttempts = 0;
+  state.attemptHistory = [];
+  state.sessionComplete = false;
+}
+
+function syncStepCounter() {
+  els.sessionStepCounter.textContent = `Step ${Math.min(
+    state.stepIndex,
+    state.stepCount
+  )}/${state.stepCount}`;
+}
+
 function enterActiveSession() {
   els.sessionExpression.textContent = state.currentExpression;
   els.sessionTopic.textContent = state.topic || "algebra";
-  els.sessionStepCounter.textContent = `Step ${state.stepIndex}/${state.stepCount}`;
+  syncStepCounter();
   els.stepInput.value = "";
   els.feedbackPanel.classList.add("hidden");
   els.inputError.classList.add("hidden");
   els.attemptHistory.open = false;
+  els.btnGiveUp.disabled = false;
   updateAttemptTracker();
   renderAttemptHistory();
   showView("session");
@@ -228,13 +281,7 @@ async function handleStartSession() {
   els.btnGetProblem.disabled = true;
   try {
     const data = await startSessionWithExpression(expression);
-    state.problemExpression = data.problem_expression;
-    state.expectedFinal = data.expected_final;
-    state.currentExpression = data.current_expression || data.problem_expression;
-    state.sessionId = data.session_id;
-    state.topic = data.topic || "algebra";
-    state.stepCount = data.step_count || 1;
-    state.stepIndex = 1;
+    applyStartSessionData(data);
     enterActiveSession();
   } catch (err) {
     els.problemError.textContent = err instanceof Error ? err.message : "Could not start session.";
@@ -255,13 +302,7 @@ async function handleTryExample() {
     const sample = await getSampleProblem();
     els.problemInput.value = sample.expression;
     const data = await startSessionWithProblemId(sample.id);
-    state.problemExpression = data.problem_expression;
-    state.expectedFinal = data.expected_final;
-    state.currentExpression = data.current_expression || data.problem_expression;
-    state.sessionId = data.session_id;
-    state.topic = data.topic || sample.topic || "algebra";
-    state.stepCount = data.step_count || 1;
-    state.stepIndex = 1;
+    applyStartSessionData(data, sample.topic);
     enterActiveSession();
   } catch (err) {
     els.problemError.textContent = err instanceof Error ? err.message : "Could not load sample.";
@@ -282,10 +323,12 @@ async function handleSubmitStep() {
   els.inputError.classList.add("hidden");
   els.btnSubmitStep.disabled = true;
   els.stepInput.disabled = true;
+  els.btnGiveUp.disabled = true;
   try {
     const result = await submitStep(state.sessionId, step);
     const errorType = result.error_classification?.error_type ?? null;
-    const isInputError = errorType && INPUT_ERROR_TYPES.has(errorType);
+    const isInputError = errorType != null && INPUT_ERROR_TYPES.has(errorType);
+    if (result.step_count) state.stepCount = result.step_count;
     state.attemptHistory.push({
       step,
       stepOrder: result.step_index || state.stepIndex,
@@ -296,8 +339,8 @@ async function handleSubmitStep() {
     if (result.is_equivalent) {
       state.totalAttempts += 1;
       state.currentExpression = result.current_expression || step;
-      state.stepIndex = result.step_index || state.stepIndex;
       if (result.session_complete) {
+        state.stepIndex = result.step_index || state.stepCount;
         state.sessionComplete = true;
         showFeedback(result);
         updateAttemptTracker(true);
@@ -305,8 +348,9 @@ async function handleSubmitStep() {
         setTimeout(showCompleteSolved, 1200);
         return;
       }
-      state.stepIndex += 1;
-    } else if (!isInputError && errorType !== "no_progress") {
+      state.stepIndex = (result.step_index || state.stepIndex) + 1;
+      state.incorrectAttemptCount = 0;
+    } else if (countsTowardAttemptLimit(errorType)) {
       state.incorrectAttemptCount += 1;
       state.totalAttempts += 1;
     }
@@ -315,10 +359,7 @@ async function handleSubmitStep() {
     renderAttemptHistory();
     updateAttemptTracker();
     els.sessionExpression.textContent = state.currentExpression;
-    els.sessionStepCounter.textContent = `Step ${Math.min(
-      state.stepIndex,
-      state.stepCount
-    )}/${state.stepCount}`;
+    syncStepCounter();
     if (state.incorrectAttemptCount >= MAX_ATTEMPTS_BEFORE_REVEAL) {
       state.sessionComplete = true;
       setTimeout(showCompleteEnded, 1500);
@@ -331,21 +372,53 @@ async function handleSubmitStep() {
     els.feedbackBanner.textContent = "⚠ Request failed";
     els.feedbackHint.textContent = err instanceof Error ? err.message : "Please try again.";
   } finally {
-    els.btnSubmitStep.disabled = false;
-    els.stepInput.disabled = false;
-    if (!state.sessionComplete) els.stepInput.focus();
+    els.btnSubmitStep.disabled = state.sessionComplete;
+    els.stepInput.disabled = state.sessionComplete;
+    if (!state.sessionComplete) {
+      els.btnGiveUp.disabled = false;
+      els.stepInput.focus();
+    }
   }
 }
 
-function handleGiveUp() {
-  if (!window.confirm("Are you sure? This will end your session.")) return;
-  state.sessionComplete = true;
-  showCompleteEnded();
+async function handleGiveUp() {
+  if (!window.confirm("Are you sure? This will reveal the answer and end your session.")) {
+    return;
+  }
+  els.btnGiveUp.disabled = true;
+  els.btnSubmitStep.disabled = true;
+  els.stepInput.disabled = true;
+  try {
+    const [sessionData, problemData] = await Promise.all([
+      fetchSession(state.sessionId),
+      fetchProblem(state.problemId),
+    ]);
+    state.problemExpression =
+      sessionData.problem_expression || problemData.expression || state.problemExpression;
+    state.expectedFinal = problemData.expected_final || state.expectedFinal;
+    state.currentExpression = sessionData.current_expression || state.currentExpression;
+    state.incorrectAttemptCount = (sessionData.attempt_history || []).filter(
+      (attempt) =>
+        !attempt.is_equivalent &&
+        countsTowardAttemptLimit(attempt.error_type ?? null)
+    ).length;
+    state.sessionComplete = true;
+    await showCompleteEnded();
+  } catch (err) {
+    els.feedbackPanel.classList.remove("hidden");
+    els.feedbackBanner.className = "feedback-banner feedback-banner--warning";
+    els.feedbackBanner.textContent = "⚠ Could not reveal solution";
+    els.feedbackHint.textContent = err instanceof Error ? err.message : "Please try again.";
+    els.btnGiveUp.disabled = false;
+    els.btnSubmitStep.disabled = false;
+    els.stepInput.disabled = false;
+  }
 }
 
 async function showCompleteSolved() {
   await deleteSession(state.sessionId);
-  els.completeSolvedExpression.textContent = `Solved: ${state.problemExpression}`;
+  state.sessionId = null;
+  els.completeSolvedExpression.textContent = `Problem: ${state.problemExpression}`;
   els.completeSolvedAnswer.textContent = `Final: ${state.expectedFinal}`;
   els.completeSolvedStats.textContent = `Solved in ${state.totalAttempts} attempt${
     state.totalAttempts === 1 ? "" : "s"
@@ -357,6 +430,8 @@ async function showCompleteSolved() {
 
 async function showCompleteEnded() {
   await deleteSession(state.sessionId);
+  state.sessionId = null;
+  els.completeEndedExpression.textContent = `Problem: ${state.problemExpression}`;
   els.completeEndedAnswer.textContent = `Final answer: ${state.expectedFinal}`;
   els.completeEndedStats.textContent = `Incorrect attempts: ${state.incorrectAttemptCount}.`;
   els.completeEnded.classList.remove("hidden");
@@ -377,6 +452,9 @@ els.btnGetProblem.addEventListener("click", handleTryExample);
 els.btnSubmitStep.addEventListener("click", handleSubmitStep);
 els.btnGiveUp.addEventListener("click", handleGiveUp);
 els.btnTryAnother.addEventListener("click", handleTryAnother);
+els.problemInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !els.btnStartSession.disabled) handleStartSession();
+});
 els.stepInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !els.btnSubmitStep.disabled) handleSubmitStep();
 });
