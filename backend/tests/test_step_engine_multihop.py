@@ -52,6 +52,26 @@ def test_single_hop_linear_steps_unchanged() -> None:
     assert _sympy_equiv(plan.final_answer, "3x+3")
 
 
+def test_multihop_trinomial_foil() -> None:
+    plan = build_solution_plan("(8x+6x^2+2)(8x^2+22x+19)")
+    assert plan.topic == "foil"
+    assert len(plan.steps) == 2
+    assert plan.steps[0] != plan.final_answer
+    assert _sympy_equiv(plan.final_answer, "48x^4+196x^3+306x^2+196x+38")
+
+
+def test_multihop_messy_trinomial_foil_two_steps() -> None:
+    """Messy keyboard input yields distribute-then-combine plan matching tidy form."""
+    messy = "(8x + 6x^2 + 2 ) ( 8*x^2 + 22x +19)"
+    plan = build_solution_plan(messy)
+    tidy = build_solution_plan("(8x+6x^2+2)(8x^2+22x+19)")
+    assert plan.topic == "foil"
+    assert len(plan.steps) == 2
+    assert plan.steps[0] != plan.steps[1]
+    assert plan.steps == tidy.steps
+    assert _sympy_equiv(plan.final_answer, "48x^4+196x^3+306x^2+196x+38")
+
+
 def test_multihop_foil_plus_constant() -> None:
     plan = build_solution_plan("(x+1)(x+2)+3")
     assert len(plan.steps) >= 2

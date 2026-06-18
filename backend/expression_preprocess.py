@@ -11,16 +11,19 @@ def preprocess_for_sympy(expression: str) -> str:
     """
     Normalize a student-facing algebra string into SymPy-parseable form.
 
+    - Collapses whitespace so ``) (`` becomes implicit multiplication.
     - Accepts ``^`` and ``**`` for exponents (both become ``**`` internally).
     - Inserts implicit multiplication: ``2x``, ``2(x+3)``, ``x(y+1)``, ``)(``.
     """
+    compact = re.sub(r"\s+", "", expression.strip())
+
     processed: list[str] = []
     i = 0
-    n = len(expression)
+    n = len(compact)
 
     while i < n:
-        ch = expression[i]
-        nxt = expression[i + 1] if i + 1 < n else ""
+        ch = compact[i]
+        nxt = compact[i + 1] if i + 1 < n else ""
 
         if ch == "*" and nxt == "*":
             processed.append("**")
@@ -32,6 +35,9 @@ def preprocess_for_sympy(expression: str) -> str:
             processed.append(ch)
             processed.append("*")
         elif ch.isalpha() and nxt == "(":
+            processed.append(ch)
+            processed.append("*")
+        elif ch.isalpha() and nxt.isalpha():
             processed.append(ch)
             processed.append("*")
         elif ch == ")" and nxt == "(":

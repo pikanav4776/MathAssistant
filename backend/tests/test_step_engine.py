@@ -10,6 +10,7 @@ from main import StepValidator
 from step_engine import (
     UnsupportedProblemError,
     build_solution_plan,
+    canonical_step_display,
     detect_topic,
     reject_if_unsupported,
 )
@@ -90,11 +91,8 @@ def test_detect_topic_linear_steps_for_signed_simplification_shapes(expression: 
     [
         ("2(x+3)", "2x+6", "distribution"),
         ("3(x-4)", "3x-12", "distribution"),
-        ("(x+2)(x+3)", "x^2+5x+6", "foil"),
-        ("(x+2)(x-3)", "x^2-x-6", "foil"),
         ("5x+3-2x", "3x+3", "linear_steps"),
         ("4(2x+5)", "8x+20", "distribution"),
-        ("(x-4)(x-1)", "x^2-5x+4", "foil"),
         ("3x-x+4", "2x+4", "linear_steps"),
         ("x+3-2x+1", "-x+4", "linear_steps"),
         ("-(x+4)+2x", "x-4", "linear_steps"),
@@ -102,11 +100,8 @@ def test_detect_topic_linear_steps_for_signed_simplification_shapes(expression: 
     ids=[
         "dist-2(x+3)",
         "dist-3(x-4)",
-        "foil-standard",
-        "foil-mixed-sign",
         "linear-5x+3-2x",
         "dist-eval-4(2x+5)",
-        "foil-eval-dexp_009",
         "linear-eval-lin_001",
         "signed-eval-sign_001",
         "signed-eval-sign_003",
@@ -114,6 +109,26 @@ def test_detect_topic_linear_steps_for_signed_simplification_shapes(expression: 
 )
 def test_build_solution_plan_single_hop(expression: str, expected_final: str, topic: str) -> None:
     _assert_plan_matches(expression, expected_final, topic=topic)
+
+
+@pytest.mark.parametrize(
+    "expression,expected_step1,expected_final",
+    [
+        ("(x+2)(x+3)", "x^2+3x+2x+6", "x^2+5x+6"),
+        ("(x+2)(x-3)", "x^2-3x+2x-6", "x^2-x-6"),
+        ("(x-4)(x-1)", "x^2-x-4x+4", "x^2-5x+4"),
+    ],
+    ids=["foil-standard", "foil-mixed-sign", "foil-eval-dexp_009"],
+)
+def test_build_solution_plan_foil_two_steps(
+    expression: str, expected_step1: str, expected_final: str
+) -> None:
+    plan = build_solution_plan(expression)
+    assert plan.topic == "foil"
+    assert len(plan.steps) == 2
+    assert _sympy_equiv(plan.steps[0], expected_step1)
+    assert _sympy_equiv(plan.final_answer, expected_final)
+    assert plan.steps[-1] == plan.final_answer
 
 
 def test_build_solution_plan_single_hop_structure() -> None:
@@ -231,3 +246,31 @@ def test_regression_2x_plus_3_plus_4_is_multihop() -> None:
     assert plan.steps[0] == "2x+6+4"
     assert plan.final_answer == plan.steps[-1]
     assert _sympy_equiv(plan.final_answer, "2x+10")
+
+
+def test_messy_foil_expression_builds_foil_plan() -> None:
+    messy = "(8x + 6x^2 + 2 ) ( 8*x^2 + 22x +19)"
+    plan = build_solution_plan(messy)
+    assert plan.topic == "foil"
+    assert len(plan.steps) == 2
+    assert plan.steps[0] != plan.final_answer
+    assert _sympy_equiv(plan.final_answer, "48x^4+196x^3+306x^2+196x+38")
+    tidy = build_solution_plan("(8x+6x^2+2)(8x^2+22x+19)")
+    assert plan.steps == tidy.steps
+    assert _sympy_equiv(plan.final_answer, tidy.final_answer)
+
+
+def test_canonical_step_display_messy_foil_input() -> None:
+    messy = "(8x + 6x^2 + 2 ) ( 8*x^2 + 22x +19)"
+    assert canonical_step_display(messy) == "(8x+6x^2+2)(8x^2+22x+19)"
+
+
+def test_two_variable_foil_step_accepts_adjacent_var_product(validator: StepValidator) -> None:
+    """504yx must parse as 504*y*x, not a single symbol yx."""
+    plan = build_solution_plan("(89x+72y)(7x+7)")
+    assert plan.topic == "foil"
+    student_step = "89*7x^2 + 89*7x+504yx + 504y"
+    result = validator.validate(student_step, plan.steps[0])
+    assert result["is_equivalent"] is True
+    assert result["error_classification"] is None
+

@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from db.models import Problem, SolutionPath, SolutionStep, TutoringSession
-from step_engine import build_solution_plan
+from step_engine import build_solution_plan, canonical_step_display
 
 
 def seed_problem_with_plan(
@@ -17,10 +17,11 @@ def seed_problem_with_plan(
     problem_id: str | None = None,
 ) -> tuple[Problem, list[SolutionStep]]:
     plan = build_solution_plan(expression)
+    canonical_expression = canonical_step_display(expression)
     pid = problem_id or f"test_{uuid.uuid4().hex[:12]}"
     problem = Problem(
         id=pid,
-        expression=expression,
+        expression=canonical_expression,
         expected_final=plan.final_answer,
         topic=plan.topic,
     )
@@ -56,7 +57,7 @@ def start_tutoring_session(
         incorrect_attempt_count=0,
         hint_level=1,
         current_step_id=None,
-        current_expression=problem.expression,
+        current_expression=canonical_step_display(problem.expression),
         completed=False,
     )
     db.add(session)

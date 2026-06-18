@@ -56,7 +56,12 @@ from sympy.core.sympify import SympifyError
 from db.database import check_db_connection, get_db, init_db
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession
 from expression_preprocess import preprocess_for_sympy
-from step_engine import UnsupportedProblemError, build_solution_plan, canonical_step_display
+from step_engine import (
+    UnsupportedProblemError,
+    build_solution_plan,
+    canonical_step_display,
+    is_factor_reorder_submission,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -436,6 +441,10 @@ _HINT_LEVELS: dict[str, dict[int, str]] = {
     "no_progress": {
         1: "You submitted the same expression. Apply the next algebraic step.",
         2: "Try transforming the current line before submitting again.",
+    },
+    "term_reorder": {
+        1: "Reordering terms is a valid rewrite, but it is not the next solving step. Apply the required operation.",
+        2: "The expression is equivalent to the current line — expand or simplify to move forward.",
     },
 }
 
@@ -833,6 +842,28 @@ def _expression_equivalent(a: str, b: str) -> bool:
     return _validator.comparison(a, b)["is_equivalent"]
 
 
+def _canonical_step_display_safe(expression: str) -> str | None:
+    try:
+        return canonical_step_display(expression)
+    except (UnsupportedProblemError, MathInputError):
+        return None
+
+
+def _is_term_reorder_submission(step: str, current_expression: str, expected_step: str) -> bool:
+    """
+  Return True when ``step`` is the same canonical line as ``current_expression``
+  (e.g. factor reorder) but not the immediate expected next step.
+    """
+    if is_factor_reorder_submission(step, current_expression):
+        return not _strict_canonical_step_match(step, expected_step)
+
+    step_canon = _canonical_step_display_safe(step)
+    current_canon = _canonical_step_display_safe(current_expression)
+    if step_canon is None or current_canon is None or step_canon != current_canon:
+        return False
+    return not _strict_canonical_step_match(step, expected_step)
+
+
 def _current_step_index(session_row: TutoringSession, steps: list[SolutionStep]) -> int:
     """
     Return the 0-based index of the solution step the student is working toward.
@@ -1072,7 +1103,7 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
                     },
                 ) from exc
 
-            problem_expression = data.problem_expression.strip()
+            problem_expression = canonical_step_display(data.problem_expression.strip())
             expected_final = plan.final_answer
             subject = plan.subject
             topic = plan.topic
@@ -1108,7 +1139,7 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
                     status_code=404,
                     detail={"error": "Problem not found."},
                 )
-            problem_expression = problem_row.expression
+            problem_expression = canonical_step_display(problem_row.expression)
             expected_final = problem_row.expected_final
             topic = problem_row.topic
             problem_id = problem_row.id
@@ -1248,6 +1279,45 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
             db.commit()
             return result
 
+    # Reordering-only: same canonical line as current, not the expected next step.
+    if _is_term_reorder_submission(data.step, session_row.current_expression, expected_step):
+        hint = generate_hint("term_reorder", hint_level=session_row.hint_level)
+        result = StepResult(
+            session_id=data.session_id,
+            received_step=data.step,
+            expected_step=expected_step,
+            is_equivalent=False,
+            structural_diff=None,
+            error_classification={
+                "error_type": "term_reorder",
+                "confidence": "high",
+                "reason": "Submission is equivalent to the current expression but not the next step.",
+            },
+            hint=hint,
+            step_index=current_index + 1,
+            step_count=step_count,
+            is_final_step=False,
+            session_complete=False,
+            current_expression=session_row.current_expression,
+        )
+        attempt_ts = datetime.utcnow()
+        db.add(
+            Attempt(
+                session_id=session_row.session_id,
+                step=data.step,
+                expected=expected_step,
+                is_equivalent=False,
+                error_type="term_reorder",
+                hint=hint,
+                step_order=current_index + 1,
+                timestamp=attempt_ts,
+            )
+        )
+        session_row.attempt_count = session_row.attempt_count + 1
+        session_row.last_active = attempt_ts
+        db.commit()
+        return result
+
     skip_target_index: int | None = None
     skipped_steps: list[SkippedStepInfo] | None = None
     skip_message: str | None = None
@@ -1321,7 +1391,10 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
 
     session_complete = False
     if result.is_equivalent:
-        session_row.current_expression = data.step
+        try:
+            session_row.current_expression = canonical_step_display(data.step)
+        except UnsupportedProblemError:
+            session_row.current_expression = data.step
         if skip_target_index is not None:
             if skip_target_index == step_count - 1:
                 session_row.completed = True
@@ -1380,7 +1453,15 @@ def get_session(session_id: str, db: OrmSession = Depends(get_db)):
         return {"error": "Session not found"}
 
     problem_row = db.query(Problem).filter_by(id=session_row.problem_id).first()
-    problem_expression = problem_row.expression if problem_row else ""
+    problem_expression = ""
+    if problem_row:
+        problem_expression = (
+            _canonical_step_display_safe(problem_row.expression)
+            or problem_row.expression
+        )
+
+    stored_current = getattr(session_row, "current_expression", problem_expression)
+    current_expression = _canonical_step_display_safe(stored_current) or stored_current
 
     attempt_rows = (
         db.query(Attempt)
@@ -1408,7 +1489,7 @@ def get_session(session_id: str, db: OrmSession = Depends(get_db)):
         attempt_count=session_row.attempt_count,
         hint_level=session_row.hint_level,
         completed=getattr(session_row, "completed", False),
-        current_expression=getattr(session_row, "current_expression", problem_expression),
+        current_expression=current_expression,
         attempt_history=attempt_history,
         created_at=session_row.created_at,
         last_active=session_row.last_active,

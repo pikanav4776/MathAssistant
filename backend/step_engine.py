@@ -66,7 +66,7 @@ def detect_topic(expression: str) -> str | None:
         add_factors = [arg for arg in expr.args if isinstance(arg, Add)]
         if len(add_factors) >= 3:
             return None
-        if len(add_factors) >= 2 and all(len(add.args) == 2 for add in add_factors[:2]):
+        if len(add_factors) >= 2:
             return "foil"
         if add_factors:
             return "distribution"
@@ -137,12 +137,72 @@ def _student_display(expr: Expr) -> str:
     return display_expression(str(expr))
 
 
+def _add_arg_display(arg: Expr) -> str:
+    if isinstance(arg, Add):
+        inner = _ordered_add_display(list(arg.args))
+        return f"({inner})" if len(arg.args) > 1 else inner
+    if isinstance(arg, Mul):
+        if any(isinstance(factor, Add) for factor in arg.args):
+            return _mul_display(arg)
+        return _term_display(arg)
+    return _term_display(arg)
+
+
+def _add_structure_display(expr: Add) -> str:
+    parts = [_add_arg_display(arg) for arg in expr.args]
+    if not parts:
+        return ""
+    result = parts[0]
+    for piece in parts[1:]:
+        if piece.startswith("-"):
+            result += piece
+        else:
+            result += f"+{piece}"
+    return result
+
+
+def _mul_display(expr: Mul) -> str:
+    parts: list[str] = []
+    for arg in expr.args:
+        if isinstance(arg, Add):
+            inner = _ordered_add_display(list(arg.args))
+            parts.append(f"({inner})")
+        else:
+            parts.append(_term_display(arg))
+    return "".join(parts)
+
+
 def canonical_step_display(expression: str) -> str:
     """Normalize an expression to its keyboard-style canonical step string."""
     expr = _parse_expr(expression)
     if isinstance(expr, Add):
-        return _ordered_add_display(list(expr.args))
+        return _add_structure_display(expr)
+    if isinstance(expr, Mul):
+        return _mul_display(expr)
     return _student_display(expr)
+
+
+def foil_factor_signatures(expr: Mul) -> tuple[str, ...] | None:
+    add_factors = [arg for arg in expr.args if isinstance(arg, Add)]
+    if len(add_factors) != 2:
+        return None
+    return tuple(sorted(_ordered_add_display(list(factor.args)) for factor in add_factors))
+
+
+def is_factor_reorder_submission(step: str, current_expression: str) -> bool:
+    """True when two foil products share the same factors in a different order."""
+    try:
+        step_expr = _parse_expr(step)
+        current_expr = _parse_expr(current_expression)
+    except UnsupportedProblemError:
+        return False
+    if not isinstance(step_expr, Mul) or not isinstance(current_expr, Mul):
+        return False
+    step_sig = foil_factor_signatures(step_expr)
+    current_sig = foil_factor_signatures(current_expr)
+    if step_sig is None or step_sig != current_sig:
+        return False
+    return _mul_display(step_expr) != _mul_display(current_expr)
 
 
 def _build_multihop_steps(expr: Add) -> list[str] | None:
@@ -172,6 +232,24 @@ def _build_multihop_steps(expr: Add) -> list[str] | None:
     return [intermediate_str, final_answer]
 
 
+def _build_foil_steps(expr: Mul) -> list[str] | None:
+    """Distribute two binomial/trinomial factors, then combine like terms."""
+    add_factors = [arg for arg in expr.args if isinstance(arg, Add)]
+    if len(add_factors) != 2:
+        return None
+
+    distributed_terms: list[Expr] = []
+    for left in add_factors[0].args:
+        for right in add_factors[1].args:
+            distributed_terms.append(expand(left * right))
+
+    distributed_str = _ordered_add_display(distributed_terms)
+    final_str = _student_display(_normalize_expr(expr))
+    if distributed_str == final_str:
+        return [final_str]
+    return [distributed_str, final_str]
+
+
 def build_solution_plan(expression: str) -> SolutionPlan:
     """Build a canonical solution plan (single- or multi-hop) for a supported problem."""
     reject_if_unsupported(expression)
@@ -184,6 +262,13 @@ def build_solution_plan(expression: str) -> SolutionPlan:
         multihop = _build_multihop_steps(expr)
         if multihop is not None:
             steps = multihop
+        else:
+            normalized = _normalize_expr(expr)
+            steps = [_student_display(normalized)]
+    elif isinstance(expr, Mul):
+        foil_steps = _build_foil_steps(expr)
+        if foil_steps is not None:
+            steps = foil_steps
         else:
             normalized = _normalize_expr(expr)
             steps = [_student_display(normalized)]
