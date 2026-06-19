@@ -24,6 +24,14 @@ def test_comparison_identical_steps(validator):
     assert result["is_equivalent"] is True
 
 
+def test_comparison_case_insensitive_variables(validator):
+    """Lowercase student variables match uppercase problem symbols."""
+    expected = "5X^5+25D*X+4"
+    for student in ("4 + 25dx + 5 * x^5", "25xd + 5x^5 + 4", "4+25Dx+5x^5"):
+        result = validator.comparison(student, expected)
+        assert result["is_equivalent"] is True, f"Expected {student!r} to match"
+
+
 def test_comparison_parse_failure(validator):
     with pytest.raises(ParseError):
         validator.comparison("2@3", "2*x")

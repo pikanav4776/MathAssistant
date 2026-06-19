@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from expression_preprocess import display_expression, preprocess_for_sympy
+from expression_preprocess import display_expression, preprocess_for_sympy, contains_text_like_input
 from sympy import Add, Mul, Pow, collect, expand, simplify, sympify
 from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
@@ -39,6 +39,10 @@ def _parse_expr(expression: str) -> Expr:
     cleaned = expression.strip()
     if not cleaned:
         raise UnsupportedProblemError("Expression cannot be empty.")
+    if contains_text_like_input(cleaned):
+        raise UnsupportedProblemError(
+            "Plain text and word-like input are not allowed. Use math notation."
+        )
     if "=" in cleaned or ">" in cleaned or "<" in cleaned:
         raise UnsupportedProblemError("Equations and inequalities are not supported in v0.3.")
     if not _ALLOWED_CHARS.match(cleaned):

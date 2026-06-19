@@ -254,6 +254,16 @@ def test_reject_if_unsupported_rejects_constant_only() -> None:
         reject_if_unsupported("5")
 
 
+def test_reject_if_unsupported_rejects_word_like_text() -> None:
+    with pytest.raises(UnsupportedProblemError, match="word-like"):
+        reject_if_unsupported("hello")
+
+
+def test_reject_if_unsupported_rejects_long_identifier() -> None:
+    with pytest.raises(UnsupportedProblemError, match="word-like"):
+        reject_if_unsupported("test+1")
+
+
 # ── 6. Regression guards ──────────────────────────────────────────────────
 
 def test_regression_2x_plus_3_plus_4_is_multihop() -> None:

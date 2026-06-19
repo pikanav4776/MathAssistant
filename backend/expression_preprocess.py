@@ -5,6 +5,47 @@ from __future__ import annotations
 import re
 
 _IMPLICIT_MUL = re.compile(r"(\d+)\*([A-Za-z])")
+_PROTECTED_NAMES = ("sqrt", "mod", "pi", "tau")
+_KNOWN_MATH_IDENTIFIERS = frozenset({"pi", "tau", "sqrt", "mod"})
+_TEXT_ONLY = re.compile(r"^[A-Za-z\s]+$")
+
+
+def contains_text_like_input(expression: str) -> bool:
+    """True when input looks like plain text/words rather than algebra."""
+    cleaned = expression.strip()
+    if len(cleaned) >= 3 and _TEXT_ONLY.match(cleaned):
+        return True
+    for match in re.finditer(r"[A-Za-z]+", cleaned):
+        token = match.group(0)
+        if token == "E":
+            continue
+        if token.lower() in _KNOWN_MATH_IDENTIFIERS:
+            continue
+        if len(token) >= 4:
+            return True
+    return False
+
+
+def _shield_protected_names(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """Prevent implicit-multiplication from splitting known functions/constants."""
+    shields: list[tuple[str, str]] = []
+    result = text
+    for name in _PROTECTED_NAMES:
+        pattern = re.compile(re.escape(name), re.IGNORECASE)
+
+        def _replace(_match: re.Match[str], canonical: str = name) -> str:
+            token = f"\uE000{len(shields)}\uE001"
+            shields.append((token, canonical))
+            return token
+
+        result = pattern.sub(_replace, result)
+    return result, shields
+
+
+def _unshield_protected_names(text: str, shields: list[tuple[str, str]]) -> str:
+    for token, name in shields:
+        text = text.replace(token, name)
+    return text
 
 
 def preprocess_for_sympy(expression: str) -> str:
@@ -16,6 +57,7 @@ def preprocess_for_sympy(expression: str) -> str:
     - Inserts implicit multiplication: ``2x``, ``2(x+3)``, ``x(y+1)``, ``)(``.
     """
     compact = re.sub(r"\s+", "", expression.strip())
+    compact, shields = _shield_protected_names(compact)
 
     processed: list[str] = []
     i = 0
@@ -46,7 +88,7 @@ def preprocess_for_sympy(expression: str) -> str:
             processed.append(ch)
         i += 1
 
-    return "".join(processed)
+    return _unshield_protected_names("".join(processed), shields)
 
 
 def display_expression(expr_str: str) -> str:

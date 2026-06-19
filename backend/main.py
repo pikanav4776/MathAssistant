@@ -46,16 +46,17 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as OrmSession 
 from pydantic import BaseModel
 from sympy import (
-    Add, E, Mul, Pow,
-    expand, collect, simplify, sympify,
-    zoo, nan, oo,
+    Add, E, Mod, Mul, Pow,
+    expand, collect, simplify, sympify, sqrt,
+    zoo, nan, oo, pi as Pi,
 )
 from sympy.core.expr import Expr
+from sympy.core.relational import Relational
 from sympy.core.sympify import SympifyError
 
 from db.database import check_db_connection, get_db, init_db
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession
-from expression_preprocess import preprocess_for_sympy
+from expression_preprocess import preprocess_for_sympy, contains_text_like_input
 from step_engine import (
     UnsupportedProblemError,
     build_solution_plan,
@@ -99,6 +100,28 @@ _NORMALIZE_TIMEOUT_SEC = 10.0
 
 MAX_ATTEMPTS_BEFORE_ESCALATION = 3
 MAX_ATTEMPTS_BEFORE_REVEAL = 5
+
+_SYMPY_LOCALS = {
+    "e": E,
+    "E": E,
+    "pi": Pi,
+    "tau": 2 * Pi,
+    "mod": Mod,
+    "sqrt": sqrt,
+}
+
+
+def _align_student_symbols_to_reference(student_expr: Expr, reference_expr: Expr) -> Expr:
+    """Map student variable symbols to reference casing when names differ only by case."""
+    ref_by_lower = {str(symbol).lower(): symbol for symbol in reference_expr.free_symbols}
+    substitutions = {}
+    for student_symbol in student_expr.free_symbols:
+        canonical = ref_by_lower.get(str(student_symbol).lower())
+        if canonical is not None and student_symbol != canonical:
+            substitutions[student_symbol] = canonical
+    if substitutions:
+        return student_expr.subs(substitutions)
+    return student_expr
 
 # Pre-parse guards (before SymPy evaluates)
 _DIV_ZERO_PATTERN = re.compile(
@@ -337,6 +360,12 @@ def _scan_text_for_input_issues(expression: str) -> None:
     if not expression or not expression.strip():
         raise MalformedSyntaxError("Empty expression", user_message="Enter an expression to check.")
 
+    if contains_text_like_input(expression):
+        raise MalformedSyntaxError(
+            "Plain text and word-like input are not allowed.",
+            user_message="Use a math expression, not plain text or words.",
+        )
+
     if _DIV_ZERO_PATTERN.search(expression):
         raise DivisionByZeroError(
             "Division by zero detected in input",
@@ -350,7 +379,7 @@ def _scan_text_for_input_issues(expression: str) -> None:
 
 def _sympify_safe(cleaned: str, original: str) -> Expr: #This function is used to safely convert a string to a SymPy expression.
     try:
-        return sympify(cleaned, locals={"e": E})
+        return sympify(cleaned, locals=_SYMPY_LOCALS)
     except SympifyError as exc:
         msg = str(exc).lower()
         if "undefined" in msg or "not defined" in msg:
@@ -507,6 +536,9 @@ class StepValidator:
         return expr
 
     def normalize(self, expr: Expr) -> Expr: # cannonical form of the expression ;
+        if isinstance(expr, Relational):
+            return expr
+
         def _pipeline(e: Expr) -> Expr:
             normalized = expand(e)
             for sym in normalized.free_symbols:
@@ -563,8 +595,28 @@ class StepValidator:
         }
 
     def comparison(self, student_str: str, expected_str: str) -> dict:
-        student_expr = self.normalize(self.parser(student_str))
-        expected_expr = self.normalize(self.parser(expected_str))
+        student_parsed = self.parser(student_str)
+        expected_parsed = self.parser(expected_str)
+        student_parsed = _align_student_symbols_to_reference(student_parsed, expected_parsed)
+
+        if isinstance(student_parsed, Relational) or isinstance(expected_parsed, Relational):
+            is_equivalent = student_parsed == expected_parsed
+            return {
+                "is_equivalent": bool(is_equivalent),
+                "structural_diff": {
+                    "top_level_op": {
+                        "student": type(student_parsed).__name__,
+                        "expected": type(expected_parsed).__name__,
+                        "match": type(student_parsed) == type(expected_parsed),
+                    },
+                    "term_diff": {"missing_terms": [], "extra_terms": []},
+                    "coeff_diff": {},
+                    "same_monomial_basis": is_equivalent,
+                },
+            }
+
+        student_expr = self.normalize(student_parsed)
+        expected_expr = self.normalize(expected_parsed)
 
         is_equivalent = _run_timed(
             lambda: simplify(student_expr - expected_expr) == 0,

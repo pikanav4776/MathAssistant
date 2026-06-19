@@ -74,3 +74,14 @@ def test_api_garbage_symbol_safe_response():
         "undefined_symbol",
     )
     assert "exception" not in body.hint.lower()
+
+
+def test_api_rejects_word_like_text():
+    body = _submit("hello")
+    assert body.error_classification["error_type"] == "malformed_syntax"
+    assert "word" in body.hint.lower()
+
+
+def test_parser_accepts_capital_euler_constant(validator):
+    expr = validator.parser("E+2")
+    assert expr.free_symbols == set()
