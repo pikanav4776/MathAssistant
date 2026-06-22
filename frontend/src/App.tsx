@@ -1,9 +1,11 @@
+import { useAuth } from "./hooks/useAuth";
 import { useSession } from "./hooks/useSession";
 import { ActiveSessionView } from "./views/ActiveSessionView";
 import { ProblemSelectionView } from "./views/ProblemSelectionView";
 import { SessionCompleteView } from "./views/SessionCompleteView";
 
 export default function App() {
+  const auth = useAuth();
   const session = useSession();
 
   return (
@@ -17,6 +19,7 @@ export default function App() {
           onUseExpression={session.applyExpression}
           loading={session.problemLoading}
           error={session.problemError}
+          auth={auth}
         />
       ) : null}
 

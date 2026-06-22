@@ -1,5 +1,9 @@
-﻿import type { KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
+import { AuthPanel } from "../components/AuthPanel";
 import { CalculatorPanel } from "../components/CalculatorPanel";
+import type { useAuth } from "../hooks/useAuth";
+
+type AuthState = ReturnType<typeof useAuth>;
 
 interface ProblemSelectionViewProps {
   problemInput: string;
@@ -9,6 +13,7 @@ interface ProblemSelectionViewProps {
   onUseExpression: (expression: string) => void;
   loading: boolean;
   error: string | null;
+  auth: AuthState;
 }
 
 export function ProblemSelectionView({
@@ -19,6 +24,7 @@ export function ProblemSelectionView({
   onUseExpression,
   loading,
   error,
+  auth,
 }: ProblemSelectionViewProps) {
   const buttonsDisabled = loading;
 
@@ -32,6 +38,16 @@ export function ProblemSelectionView({
         <h1 className="app-title">MathAssistant</h1>
         <p className="app-subtitle">Algebra Co-Solving (v1.0)</p>
       </header>
+
+      <AuthPanel
+        user={auth.user}
+        loading={auth.loading}
+        error={auth.error}
+        onLogin={auth.login}
+        onRegister={auth.register}
+        onLogout={auth.logout}
+        onClearError={auth.clearError}
+      />
 
       <div className="input-area">
         <label htmlFor="problem-input" className="input-label">

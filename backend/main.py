@@ -59,7 +59,9 @@ from sympy.core.relational import Relational
 from sympy.core.sympify import SympifyError
 
 from db.database import check_db_connection, get_db, init_db
-from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession
+from auth.deps import get_optional_user, require_admin
+from auth.routes import router as auth_router
+from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession, User, UserRole
 from expression_preprocess import preprocess_for_sympy, contains_text_like_input
 from step_engine import (
     UnsupportedProblemError,
@@ -164,6 +166,8 @@ def _cors_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+app.include_router(auth_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -174,6 +178,23 @@ app.add_middleware(
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+
+def _assert_session_access(session_row: TutoringSession, user: User | None) -> None:
+    owner_id = session_row.user_id
+    if owner_id is None:
+        return
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "not_authenticated", "message": "Sign in to access this session."},
+        )
+    if user.id != owner_id and user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "forbidden", "message": "You do not have access to this session."},
+        )
+
 # Request / response models
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class StepInput(BaseModel):
@@ -1082,7 +1103,11 @@ def get_sample_problem(
 
 
 @app.post("/problem", response_model=ProblemResponse, status_code=201)
-def create_problem(data: ProblemCreateRequest, db: OrmSession = Depends(get_db)):
+def create_problem(
+    data: ProblemCreateRequest,
+    db: OrmSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
     """
     Insert a new problem into the library (admin use; no auth yet).
 
@@ -1091,7 +1116,6 @@ def create_problem(data: ProblemCreateRequest, db: OrmSession = Depends(get_db))
     Returns: HTTP 201 with ProblemResponse on success.
     Raises HTTP 409 if the ID already exists, HTTP 500 on unexpected DB errors.
     """
-    # TODO Phase 9+: restrict to admin role
     if not data.expression.strip() or not data.expected_final.strip():
         raise HTTPException(
             status_code=422,
@@ -1129,7 +1153,11 @@ def create_problem(data: ProblemCreateRequest, db: OrmSession = Depends(get_db))
 
 
 @app.post("/start-session", response_model=StartSessionResponse)
-def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
+def start_session(
+    data: StartSessionRequest,
+    db: OrmSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     try:
         session_id = str(uuid.uuid4())
         now = _utc_now()
@@ -1215,6 +1243,7 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
                 current_step_id=None,
                 current_expression=problem_expression,
                 completed=False,
+                user_id=current_user.id if current_user else None,
             )
         )
         db.commit()
@@ -1245,7 +1274,11 @@ def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
 
 
 @app.post("/submit-step", response_model=StepResult)
-def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
+def submit_step(
+    data: StepInput,
+    db: OrmSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     session_row = (
         db.query(TutoringSession).filter_by(session_id=data.session_id).first()
     )
@@ -1259,6 +1292,8 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
             error_classification=None,
             hint="Session not found. Please start a new session.",
         )
+
+    _assert_session_access(session_row, current_user)
 
     problem_row = db.query(Problem).filter_by(id=session_row.problem_id).first()
     if problem_row is None:
@@ -1501,12 +1536,18 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
 
 
 @app.get("/session/{session_id}")
-def get_session(session_id: str, db: OrmSession = Depends(get_db)):
+def get_session(
+    session_id: str,
+    db: OrmSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     session_row = (
         db.query(TutoringSession).filter_by(session_id=session_id).first()
     )
     if session_row is None:
         return {"error": "Session not found"}
+
+    _assert_session_access(session_row, current_user)
 
     problem_row = db.query(Problem).filter_by(id=session_row.problem_id).first()
     problem_expression = ""
@@ -1553,12 +1594,18 @@ def get_session(session_id: str, db: OrmSession = Depends(get_db)):
 
 
 @app.delete("/session/{session_id}")
-def delete_session(session_id: str, db: OrmSession = Depends(get_db)):
+def delete_session(
+    session_id: str,
+    db: OrmSession = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
     session_row = (
         db.query(TutoringSession).filter_by(session_id=session_id).first()
     )
     if session_row is None:
         return {"deleted": False, "error": "Session not found"}
+
+    _assert_session_access(session_row, current_user)
 
     db.query(Attempt).filter_by(session_id=session_id).delete()
     db.delete(session_row)

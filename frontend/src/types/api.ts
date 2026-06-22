@@ -118,3 +118,15 @@ export const initialSessionState = (): SessionState => ({
   stepCount: 1,
   attemptHistory: [],
 });
+export interface UserProfile {
+  id: number;
+  email: string;
+  display_name: string | null;
+  role: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: UserProfile;
+}
