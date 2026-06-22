@@ -62,6 +62,7 @@ from db.database import check_db_connection, get_db, init_db
 from auth.deps import get_optional_user, require_admin
 from auth.routes import router as auth_router
 from problem_routes import router as problem_router
+from rate_limit import RateLimitMiddleware, assert_production_secrets
 from session_access import assert_session_access
 from session_detail import step_index_for_session
 from session_routes import router as session_router
@@ -149,6 +150,7 @@ _UNDEFINED_TEXT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    assert_production_secrets()
     init_db()
     yield
 
@@ -181,6 +183,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

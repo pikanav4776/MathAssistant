@@ -21,10 +21,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Engine quality (Phase 6):** classifier regression tests (`arith_002`, `lin_009`, `lin_010`), live notation parse tests, multihop journey regression for all 12 problems.
 - v1.0 measured-results table in `reports/evaluation_report.md` and `Product_Spec.txt`.
 - **Problem library (Phase 7):** library audit tests, canonical `expected_final` fixes, `GET /problems/starter`, starter problems UI, `POST /problem` engine validation.
+- **Production hardening (Phase 8):** per-IP rate limits on `/auth/login`, `/auth/register`, `/start-session`, `/submit-step`; Render `JWT_SECRET` startup guard; CI `alembic check`; health probe tests; release checklist and security docs.
 
 ### Changed
 
 - Product version unified to **v1.0 (Algebra Co-Solving)** across docs, API metadata, and UI subtitle.
+- CI runs `alembic upgrade head` and `alembic check` before pytest.
+- `render.yaml` / `render-staging.yaml` document required `JWT_SECRET` env var.
 - Sessions are **finalized** instead of deleted on complete, so `session_summaries` rows are retained.
 - Session timestamps use timezone-aware UTC (`_utc_now`) instead of deprecated `datetime.utcnow()`.
 - Calculator scope notes in UI: new problems stay algebra-only; sqrt/mod/comparisons not supported for problem entry.

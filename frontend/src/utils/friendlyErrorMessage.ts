@@ -17,6 +17,9 @@ function messageFromDetail(detail: unknown): string | null {
     if (obj.error === "not_authenticated") {
       return "Sign in to access this session.";
     }
+    if (obj.error === "rate_limit_exceeded") {
+      return "Too many requests. Please wait a moment and try again.";
+    }
     if (typeof obj.error === "string") return obj.error;
   }
   return null;

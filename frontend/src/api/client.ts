@@ -56,6 +56,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
       if (obj.error === "not_authenticated") {
         throw new Error("Sign in to access this session.");
       }
+      if (obj.error === "rate_limit_exceeded") {
+        throw new Error("Too many requests. Please wait a moment and try again.");
+      }
       if (typeof obj.error === "string") throw new Error(obj.error);
     }
     throw new Error("Request failed.");

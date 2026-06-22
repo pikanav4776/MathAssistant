@@ -54,6 +54,11 @@ def db_session(test_engine) -> Generator[Session, None, None]:
         connection.close()
 
 
+@pytest.fixture(autouse=True)
+def disable_rate_limiting(monkeypatch) -> None:
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+
+
 @pytest.fixture
 def client(db_session: Session, monkeypatch) -> Generator[TestClient, None, None]:
     monkeypatch.setattr("main.init_db", lambda: None)
