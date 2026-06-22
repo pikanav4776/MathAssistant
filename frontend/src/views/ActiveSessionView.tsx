@@ -17,6 +17,7 @@ interface ActiveSessionViewProps {
   showFeedback: boolean;
   inputError: boolean;
   submitDisabled: boolean;
+  submitting?: boolean;
   giveUpDisabled: boolean;
   attemptHistoryOpen: boolean;
   onAttemptHistoryToggle: (open: boolean) => void;
@@ -34,6 +35,7 @@ export function ActiveSessionView({
   showFeedback,
   inputError,
   submitDisabled,
+  submitting = false,
   giveUpDisabled,
   attemptHistoryOpen,
   onAttemptHistoryToggle,
@@ -77,6 +79,8 @@ export function ActiveSessionView({
         contextHint="step"
         disabled={submitDisabled}
       />
+
+      {submitting ? <p className="status-message">Checking step...</p> : null}
 
       {showFeedback && feedback ? <FeedbackPanel feedback={feedback} /> : null}
 

@@ -1,14 +1,15 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  deleteSession,
-  fetchProblem,
   fetchSession,
+  finalizeSession,
+  fetchProblem,
   getSampleProblem,
   startSessionWithExpression,
   startSessionWithProblemId,
   submitStep,
 } from "../api/client";
 import { containsTextLikeInput } from "../utils/expressionTextLike";
+import { friendlyErrorMessage } from "../utils/friendlyErrorMessage";
 import {
   countsTowardAttemptLimit,
   isInputErrorType,
@@ -19,11 +20,69 @@ import type {
   AppView,
   CompleteMode,
   FeedbackState,
+  LocalAttemptHistoryItem,
   SessionState,
+  SessionSummary,
   StartSessionResponse,
   StepResult,
 } from "../types/api";
 import { initialSessionState } from "../types/api";
+
+const ACTIVE_SESSION_STORAGE_KEY = "mathassistant_active_session_id";
+
+function persistActiveSessionId(sessionId: string | null): void {
+  if (typeof sessionStorage === "undefined") return;
+  if (sessionId) sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, sessionId);
+  else sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+}
+
+function readActiveSessionId(): string | null {
+  if (typeof sessionStorage === "undefined") return null;
+  return sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+}
+
+function attemptHistoryFromServer(
+  entries: SessionSummary["attempt_history"]
+): LocalAttemptHistoryItem[] {
+  return entries.map((entry) => {
+    const errorType = entry.error_type ?? null;
+    return {
+      step: String(entry.step ?? ""),
+      stepOrder: Number(entry.step_order ?? 1),
+      hint: typeof entry.hint === "string" ? entry.hint : undefined,
+      isEquivalent: Boolean(entry.is_equivalent),
+      isInputError: isInputErrorType(errorType),
+    };
+  });
+}
+
+function hydrateSessionState(data: SessionSummary): SessionState {
+  const attemptHistory = attemptHistoryFromServer(data.attempt_history);
+  const incorrectAttemptCount =
+    data.incorrect_attempt_count ??
+    attemptHistory.filter(
+      (attempt) =>
+        !attempt.isEquivalent &&
+        countsTowardAttemptLimit(
+          data.attempt_history.find((e) => e.step === attempt.step)?.error_type ?? null
+        )
+    ).length;
+
+  return {
+    problemId: data.problem_id || "",
+    problemExpression: data.problem_expression,
+    expectedFinal: data.expected_final || "",
+    currentExpression: data.current_expression || data.problem_expression,
+    sessionId: data.session_id,
+    topic: data.topic || "algebra",
+    stepCount: data.step_count || 1,
+    stepIndex: data.step_index || 1,
+    incorrectAttemptCount,
+    totalAttempts: data.attempt_count,
+    attemptHistory,
+    sessionComplete: Boolean(data.completed),
+  };
+}
 
 function applyStartSessionData(
   prev: SessionState,
@@ -89,7 +148,9 @@ export function useSession() {
   const [problemError, setProblemError] = useState<string | null>(null);
   const [inputError, setInputError] = useState(false);
   const [submitDisabled, setSubmitDisabled] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [giveUpDisabled, setGiveUpDisabled] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const [attemptHistoryOpen, setAttemptHistoryOpen] = useState(false);
   const [allGreenDots, setAllGreenDots] = useState(false);
 
@@ -98,7 +159,15 @@ export function useSession() {
 
   const showCompleteSolved = useCallback(async () => {
     const current = stateRef.current;
-    await deleteSession(current.sessionId);
+    try {
+      await finalizeSession(current.sessionId, {
+        completed: true,
+        revealedSolution: false,
+      });
+    } catch {
+      // Still show complete screen even if finalize fails offline.
+    }
+    persistActiveSessionId(null);
     setState((prev) => ({ ...prev, sessionId: null }));
     setCompleteMode("solved");
     setView("complete");
@@ -106,7 +175,15 @@ export function useSession() {
 
   const showCompleteEnded = useCallback(async () => {
     const current = stateRef.current;
-    await deleteSession(current.sessionId);
+    try {
+      await finalizeSession(current.sessionId, {
+        completed: false,
+        revealedSolution: true,
+      });
+    } catch {
+      // Still show complete screen even if finalize fails offline.
+    }
+    persistActiveSessionId(null);
     setState((prev) => ({ ...prev, sessionId: null }));
     setCompleteMode("ended");
     setView("complete");
@@ -120,9 +197,40 @@ export function useSession() {
     setAttemptHistoryOpen(false);
     setGiveUpDisabled(false);
     setSubmitDisabled(false);
+    setSubmitting(false);
     setAllGreenDots(false);
     setView("session");
   }, []);
+
+  useEffect(() => {
+    const storedId = readActiveSessionId();
+    if (!storedId) return;
+
+    let cancelled = false;
+    setResuming(true);
+
+    fetchSession(storedId)
+      .then((data) => {
+        if (cancelled) return;
+        if (data.completed) {
+          persistActiveSessionId(null);
+          return;
+        }
+        setState(hydrateSessionState(data));
+        enterActiveSession();
+      })
+      .catch(() => {
+        if (cancelled) return;
+        persistActiveSessionId(null);
+      })
+      .finally(() => {
+        if (!cancelled) setResuming(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enterActiveSession]);
 
   const handleStartSession = useCallback(async () => {
     const expression = problemInput.trim();
@@ -139,9 +247,10 @@ export function useSession() {
     try {
       const data = await startSessionWithExpression(expression);
       setState((prev) => applyStartSessionData(prev, data));
+      persistActiveSessionId(data.session_id);
       enterActiveSession();
     } catch (err) {
-      setProblemError(err instanceof Error ? err.message : "Could not start session.");
+      setProblemError(friendlyErrorMessage(err));
     } finally {
       setProblemLoading(false);
     }
@@ -155,9 +264,10 @@ export function useSession() {
       setProblemInput(sample.expression);
       const data = await startSessionWithProblemId(sample.id);
       setState((prev) => applyStartSessionData(prev, data, sample.topic ?? ""));
+      persistActiveSessionId(data.session_id);
       enterActiveSession();
     } catch (err) {
-      setProblemError(err instanceof Error ? err.message : "Could not load sample.");
+      setProblemError(friendlyErrorMessage(err));
     } finally {
       setProblemLoading(false);
     }
@@ -171,6 +281,7 @@ export function useSession() {
     }
     setInputError(false);
     setSubmitDisabled(true);
+    setSubmitting(true);
     setGiveUpDisabled(true);
 
     const current = stateRef.current;
@@ -181,7 +292,7 @@ export function useSession() {
     try {
       const result = await submitStep(current.sessionId, step);
       const errorType = result.error_classification?.error_type ?? null;
-      const isInputError = isInputErrorType(errorType);
+      const isInputErr = isInputErrorType(errorType);
 
       let nextState = { ...current };
       if (result.step_count) nextState.stepCount = result.step_count;
@@ -195,7 +306,7 @@ export function useSession() {
             stepOrder: result.step_index || nextState.stepIndex,
             hint: result.hint,
             isEquivalent: result.is_equivalent,
-            isInputError,
+            isInputError: isInputErr,
           },
         ],
       };
@@ -240,17 +351,18 @@ export function useSession() {
         return;
       }
 
-      if (!isInputError) setStepInput("");
+      if (!isInputErr) setStepInput("");
     } catch (err) {
       setShowFeedback(true);
       setFeedback({
         isEquivalent: false,
         isInputError: false,
-        hint: err instanceof Error ? err.message : "Please try again.",
+        hint: friendlyErrorMessage(err),
         showDeeperHint: false,
         requestFailed: true,
       });
     } finally {
+      setSubmitting(false);
       setSubmitDisabled(sessionComplete);
       if (!sessionComplete) {
         setGiveUpDisabled(false);
@@ -302,10 +414,10 @@ export function useSession() {
       setFeedback({
         isEquivalent: false,
         isInputError: false,
-        hint: err instanceof Error ? err.message : "Please try again.",
+        hint: friendlyErrorMessage(err),
         showDeeperHint: false,
         requestFailed: true,
-        bannerOverride: "⚠ Could not reveal solution",
+        bannerOverride: "Could not reveal solution",
       });
       setGiveUpDisabled(false);
       setSubmitDisabled(false);
@@ -313,6 +425,7 @@ export function useSession() {
   }, [showCompleteEnded]);
 
   const handleTryAnother = useCallback(() => {
+    persistActiveSessionId(null);
     setState(initialSessionState());
     setProblemInput("");
     setStepInput("");
@@ -356,7 +469,9 @@ export function useSession() {
     problemError,
     inputError,
     submitDisabled: submitDisabled || state.sessionComplete,
+    submitting,
     giveUpDisabled,
+    resuming,
     attemptHistoryOpen,
     setAttemptHistoryOpen,
     allGreenDots,

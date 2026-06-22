@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { AuthPanel } from "../components/AuthPanel";
 import { CalculatorPanel } from "../components/CalculatorPanel";
+import { SessionHistoryPanel } from "../components/SessionHistoryPanel";
 import type { useAuth } from "../hooks/useAuth";
 
 type AuthState = ReturnType<typeof useAuth>;
@@ -12,6 +13,7 @@ interface ProblemSelectionViewProps {
   onTryExample: () => void;
   onUseExpression: (expression: string) => void;
   loading: boolean;
+  resuming?: boolean;
   error: string | null;
   auth: AuthState;
 }
@@ -23,10 +25,11 @@ export function ProblemSelectionView({
   onTryExample,
   onUseExpression,
   loading,
+  resuming = false,
   error,
   auth,
 }: ProblemSelectionViewProps) {
-  const buttonsDisabled = loading;
+  const buttonsDisabled = loading || resuming;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && !buttonsDisabled) onStartSession();
@@ -48,6 +51,8 @@ export function ProblemSelectionView({
         onLogout={auth.logout}
         onClearError={auth.clearError}
       />
+
+      {auth.user ? <SessionHistoryPanel userId={auth.user.id} /> : null}
 
       <div className="input-area">
         <label htmlFor="problem-input" className="input-label">
@@ -92,6 +97,7 @@ export function ProblemSelectionView({
         Try an example from library
       </button>
 
+      {resuming ? <p className="status-message">Restoring session...</p> : null}
       {loading ? <p className="status-message">Starting session...</p> : null}
       {error ? <p className="status-message status-error">{error}</p> : null}
     </section>

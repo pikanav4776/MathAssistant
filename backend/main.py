@@ -61,6 +61,9 @@ from sympy.core.sympify import SympifyError
 from db.database import check_db_connection, get_db, init_db
 from auth.deps import get_optional_user, require_admin
 from auth.routes import router as auth_router
+from session_access import assert_session_access
+from session_detail import step_index_for_session
+from session_routes import router as session_router
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession, User, UserRole
 from expression_preprocess import preprocess_for_sympy, contains_text_like_input
 from step_engine import (
@@ -167,6 +170,7 @@ def _cors_origins() -> list[str]:
 
 
 app.include_router(auth_router)
+app.include_router(session_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -181,19 +185,7 @@ app.add_middleware(
 
 
 def _assert_session_access(session_row: TutoringSession, user: User | None) -> None:
-    owner_id = session_row.user_id
-    if owner_id is None:
-        return
-    if user is None:
-        raise HTTPException(
-            status_code=401,
-            detail={"error": "not_authenticated", "message": "Sign in to access this session."},
-        )
-    if user.id != owner_id and user.role != UserRole.ADMIN.value:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "forbidden", "message": "You do not have access to this session."},
-        )
+    assert_session_access(session_row, user)
 
 # Request / response models
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -271,6 +263,11 @@ class SessionSummary(BaseModel):
     attempt_history: list[dict]
     created_at: datetime
     last_active: datetime
+    expected_final: str | None = None
+    topic: str | None = None
+    step_index: int = 1
+    step_count: int = 1
+    incorrect_attempt_count: int = 0
 
 
 @dataclass
@@ -1551,14 +1548,25 @@ def get_session(
 
     problem_row = db.query(Problem).filter_by(id=session_row.problem_id).first()
     problem_expression = ""
+    expected_final: str | None = None
+    topic: str | None = None
     if problem_row:
         problem_expression = (
             _canonical_step_display_safe(problem_row.expression)
             or problem_row.expression
         )
+        expected_final = (
+            _canonical_step_display_safe(problem_row.expected_final)
+            or problem_row.expected_final
+        )
+        topic = problem_row.topic
 
     stored_current = getattr(session_row, "current_expression", problem_expression)
     current_expression = _canonical_step_display_safe(stored_current) or stored_current
+
+    steps = _get_primary_solution_steps(db, session_row.problem_id)
+    step_count = len(steps) if steps else 1
+    step_index = step_index_for_session(session_row, steps)
 
     attempt_rows = (
         db.query(Attempt)
@@ -1590,6 +1598,11 @@ def get_session(
         attempt_history=attempt_history,
         created_at=session_row.created_at,
         last_active=session_row.last_active,
+        expected_final=expected_final,
+        topic=topic,
+        step_index=step_index,
+        step_count=step_count,
+        incorrect_attempt_count=session_row.incorrect_attempt_count,
     )
 
 

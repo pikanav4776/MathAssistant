@@ -5,6 +5,7 @@ import type {
   StartSessionResponse,
   StepResult,
   UserProfile,
+  UserSessionHistoryItem,
 } from "../types/api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -44,8 +45,15 @@ async function parseResponse<T>(response: Response): Promise<T> {
     if (detail !== null && typeof detail === "object") {
       const obj = detail as Record<string, unknown>;
       if (typeof obj.message === "string") throw new Error(obj.message);
-      if (obj.error === "unsupported_problem" && typeof obj.message === "string") {
-        throw new Error(obj.message);
+      if (obj.error === "unsupported_problem") {
+        throw new Error(
+          typeof obj.message === "string"
+            ? obj.message
+            : "This problem type isn't supported yet. Try distribution, FOIL, or simplification."
+        );
+      }
+      if (obj.error === "not_authenticated") {
+        throw new Error("Sign in to access this session.");
       }
       if (typeof obj.error === "string") throw new Error(obj.error);
     }
@@ -131,6 +139,29 @@ export async function deleteSession(sessionId: string | null): Promise<void> {
     method: "DELETE",
     headers: buildHeaders(false),
   });
+}
+
+export async function finalizeSession(
+  sessionId: string | null,
+  options: { completed: boolean; revealedSolution: boolean }
+): Promise<void> {
+  if (!sessionId) return;
+  const response = await fetch(`${API_BASE}/session/${sessionId}/finalize`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({
+      completed: options.completed,
+      revealed_solution: options.revealedSolution,
+    }),
+  });
+  await parseResponse<{ session_id: string; summarized: boolean }>(response);
+}
+
+export async function fetchUserSessionHistory(): Promise<UserSessionHistoryItem[]> {
+  const response = await fetch(`${API_BASE}/auth/me/sessions`, {
+    headers: buildHeaders(false),
+  });
+  return parseResponse<UserSessionHistoryItem[]>(response);
 }
 
 export async function fetchSession(sessionId: string): Promise<SessionSummary> {

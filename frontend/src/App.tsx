@@ -18,6 +18,7 @@ export default function App() {
           onTryExample={session.handleTryExample}
           onUseExpression={session.applyExpression}
           loading={session.problemLoading}
+          resuming={session.resuming}
           error={session.problemError}
           auth={auth}
         />
@@ -35,6 +36,7 @@ export default function App() {
           showFeedback={session.showFeedback}
           inputError={session.inputError}
           submitDisabled={session.submitDisabled}
+          submitting={session.submitting}
           giveUpDisabled={session.giveUpDisabled}
           attemptHistoryOpen={session.attemptHistoryOpen}
           onAttemptHistoryToggle={session.setAttemptHistoryOpen}

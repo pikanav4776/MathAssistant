@@ -13,10 +13,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Auth foundation** (scaffolding only): `User` model with roles, bcrypt password hashing, JWT create/decode helpers, Alembic migration `b2c8e4f01a23`, and `test_auth.py`. Login/register endpoints and session ownership are deferred.
 - **Vitest** in CI: `expressionHeuristic` and `expressionTextLike` unit tests.
 - Mobile calculator CSS: 44px touch targets, 10-column grid on narrow screens.
+- **Session resume** after page refresh via `sessionStorage` and enriched `GET /session/{id}`.
+- **Session summaries** persisted on complete/give-up via `POST /session/{id}/finalize`.
+- **Signed-in session history** on problem selection (`GET /auth/me/sessions`, `SessionHistoryPanel`).
+- **Friendly error messages** for unsupported problems, auth errors, and network failures.
+- `friendlyErrorMessage` utility tests.
 
 ### Changed
 
 - Product version unified to **v1.0 (Algebra Co-Solving)** across docs, API metadata, and UI subtitle.
+- Sessions are **finalized** instead of deleted on complete, so `session_summaries` rows are retained.
 - Session timestamps use timezone-aware UTC (`_utc_now`) instead of deprecated `datetime.utcnow()`.
 - Calculator scope notes in UI: new problems stay algebra-only; sqrt/mod/comparisons not supported for problem entry.
 

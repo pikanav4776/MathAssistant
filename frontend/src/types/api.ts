@@ -66,6 +66,23 @@ export interface SessionSummary {
   created_at: string;
   last_active: string;
   error?: string;
+  expected_final?: string | null;
+  topic?: string | null;
+  step_index?: number;
+  step_count?: number;
+  incorrect_attempt_count?: number;
+}
+
+export interface UserSessionHistoryItem {
+  session_id: string;
+  problem_id: string;
+  problem_expression: string;
+  completed: boolean;
+  revealed_solution: boolean;
+  total_attempts: number;
+  incorrect_attempts: number;
+  duration_seconds: number | null;
+  completed_at: string | null;
 }
 
 export interface LocalAttemptHistoryItem {
