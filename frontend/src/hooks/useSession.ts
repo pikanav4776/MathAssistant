@@ -8,6 +8,7 @@ import {
   startSessionWithProblemId,
   submitStep,
 } from "../api/client";
+import { containsTextLikeInput } from "../utils/expressionTextLike";
 import {
   countsTowardAttemptLimit,
   isInputErrorType,
@@ -127,6 +128,10 @@ export function useSession() {
     const expression = problemInput.trim();
     if (!expression) {
       setProblemError("Please enter a problem expression.");
+      return;
+    }
+    if (containsTextLikeInput(expression)) {
+      setProblemError("Plain text and word-like input are not allowed. Use math notation.");
       return;
     }
     setProblemError(null);
@@ -318,6 +323,25 @@ export function useSession() {
     setView("selection");
   }, []);
 
+  const applyExpression = useCallback(
+    (expression: string) => {
+      const trimmed = expression.trim();
+      if (!trimmed) return;
+
+      if (view === "selection") {
+        setProblemInput(trimmed);
+        requestAnimationFrame(() => document.getElementById("problem-input")?.focus());
+        return;
+      }
+
+      if (view === "session") {
+        setStepInput(trimmed);
+        requestAnimationFrame(() => document.getElementById("step-input")?.focus());
+      }
+    },
+    [view]
+  );
+
   return {
     view,
     state,
@@ -341,5 +365,6 @@ export function useSession() {
     handleSubmitStep,
     handleGiveUp,
     handleTryAnother,
+    applyExpression,
   };
 }

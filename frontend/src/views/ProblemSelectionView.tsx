@@ -1,10 +1,12 @@
 import type { KeyboardEvent } from "react";
+import { CalculatorPanel } from "../components/CalculatorPanel";
 
 interface ProblemSelectionViewProps {
   problemInput: string;
   onProblemInputChange: (value: string) => void;
   onStartSession: () => void;
   onTryExample: () => void;
+  onUseExpression: (expression: string) => void;
   loading: boolean;
   error: string | null;
 }
@@ -14,6 +16,7 @@ export function ProblemSelectionView({
   onProblemInputChange,
   onStartSession,
   onTryExample,
+  onUseExpression,
   loading,
   error,
 }: ProblemSelectionViewProps) {
@@ -57,6 +60,12 @@ export function ProblemSelectionView({
       >
         Start Session
       </button>
+
+      <CalculatorPanel
+        onUseExpression={onUseExpression}
+        contextHint="problem"
+        disabled={buttonsDisabled}
+      />
 
       <button
         type="button"
