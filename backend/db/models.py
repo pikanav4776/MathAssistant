@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import enum
 from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -123,15 +125,31 @@ class ProblemWrongAnswer(Base):
     )
 
 
+class UserRole(str, enum.Enum):
+    USER = "user"
+    ADMIN = "admin"
+
+
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (Index("uq_users_email", "email", unique=True),)
+    __table_args__ = (
+        Index("uq_users_email", "email", unique=True),
+        CheckConstraint(
+            "role IN ('user', 'admin')",
+            name="ck_users_role",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    role: Mapped[str] = mapped_column(String, nullable=False, server_default="student")
+    role: Mapped[str] = mapped_column(
+        String,
+        nullable=False,
+        default=UserRole.USER.value,
+        server_default=UserRole.USER.value,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

@@ -36,7 +36,11 @@ from hashlib import sha256
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 from typing import Callable, TypeVar
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -258,8 +262,8 @@ class SessionState:
     incorrect_attempt_count: int = 0
     attempt_history: list[dict] = field(default_factory=list)
     hint_level: int = 1
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    last_active: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_utc_now)
+    last_active: datetime = field(default_factory=_utc_now)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1128,7 +1132,7 @@ def create_problem(data: ProblemCreateRequest, db: OrmSession = Depends(get_db))
 def start_session(data: StartSessionRequest, db: OrmSession = Depends(get_db)):
     try:
         session_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = _utc_now()
         subject = "algebra"
         topic: str | None = None
 
@@ -1313,7 +1317,7 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
                 session_complete=False,
                 current_expression=session_row.current_expression,
             )
-            attempt_ts = datetime.utcnow()  
+            attempt_ts = _utc_now()  
             db.add(
                 Attempt(
                     session_id=session_row.session_id,
@@ -1352,7 +1356,7 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
             session_complete=False,
             current_expression=session_row.current_expression,
         )
-        attempt_ts = datetime.utcnow()
+        attempt_ts = _utc_now()
         db.add(
             Attempt(
                 session_id=session_row.session_id,
@@ -1439,7 +1443,7 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
     session_row.attempt_count = session_obj.attempt_count
     session_row.incorrect_attempt_count = session_obj.incorrect_attempt_count
     session_row.hint_level = session_obj.hint_level
-    session_row.last_active = datetime.utcnow()
+    session_row.last_active = _utc_now()
 
     session_complete = False
     if result.is_equivalent:
@@ -1462,7 +1466,7 @@ def submit_step(data: StepInput, db: OrmSession = Depends(get_db)):
             next_row = steps[current_index + 1]
             session_row.current_step_id = next_row.sol_step_id
 
-    attempt_ts = datetime.utcnow()
+    attempt_ts = _utc_now()
     db.add(
         Attempt(
             session_id=session_row.session_id,
