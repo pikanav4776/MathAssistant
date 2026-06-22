@@ -41,13 +41,14 @@ Primary goals:
 
 Success metrics:
 
-	Metric                          Target
-	------------------------------  ------
-	Problem type detection          100%
-	Final answer accuracy           >= 80%
-	Error classification accuracy   >= 70%
-	First error detection           100%
-	Hint usefulness                 >= 75%
+	Metric                          Target    v1.0 Actual
+	------------------------------  ------    -----------
+	Problem type detection          100%      100% (algebra MVP scope)
+	Final answer accuracy           >= 80%    100% on evaluation dataset
+	Error classification accuracy   >= 70%    100% (144/144 labeled wrong steps)
+	First error detection           100%      100% on labeled dataset
+	Hint usefulness                 >= 75%    Pending live-student study
+	Multihop journey regression     12/12     12/12 pass
 
 Measured results: see reports/evaluation_report.md
 

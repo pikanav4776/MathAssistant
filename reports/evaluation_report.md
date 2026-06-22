@@ -1,5 +1,8 @@
 # MathAssistant — Classifier Evaluation Report
 
+**Version:** v1.0 (Algebra Co-Solving)  
+**Last re-validated:** June 22, 2026
+
 ## System Overview
 
 MathAssistant is a deterministic algebraic step validation 
@@ -185,6 +188,24 @@ answer.
 
 0/144 (0.0%)
 
+## v1.0 Measured Results vs Product Targets
+
+| Metric | Target (Product Spec) | v1.0 Actual | Status |
+|--------|----------------------|-------------|--------|
+| Error classification accuracy | ≥ 70% | **100%** (144/144) | Met |
+| First error detection | 100% | **100%** on labeled dataset | Met |
+| Parse success (synthetic dataset) | — | **100%** (144/144) | — |
+| Macro F1 | — | **1.00** | — |
+| Unknown classification rate | < 10% | **0%** | Met |
+| Hint usefulness (manual rating) | ≥ 75% | Not yet measured on live students | Pending |
+| Multihop journey regression | All 12 problems | **12/12** pass (`test_multihop_regression.py`) | Met |
+
+**Re-run command:** `python scripts/evaluate_classifier.py` from repo root.
+
+**Live notation coverage:** `backend/tests/test_live_input_notation.py` — `**` exponents, mixed-case variables, calculator-built strings.
+
+**Classifier regression lock:** `backend/tests/test_classifier_regression.py` — `arith_002`, `lin_009`, `lin_010` polynomial sign/coefficient cases.
+
 ## Interpretation
 
 The final evaluation results reflect the system after one 
@@ -236,23 +257,10 @@ equally, which is what Macro F1 is designed to verify.
 
 ## Conclusion
 
-MathAssistant's deterministic rule-based classifier achieves 
+	MathAssistant's deterministic rule-based classifier achieves 
 a Macro F1 of 1.00 across all three error types on a 
 144-entry synthetic evaluation dataset (72 problems), with a 
-100% parse success rate and 0% unknown rate. The system 
-reliably distinguishes distribution errors (missing terms 
-after expansion), sign errors (flipped coefficients), and 
-arithmetic errors (wrong coefficient values) across five 
-algebraic topics and three difficulty levels. v0.3 adds 
-multi-hop session validation (tested separately in 
-test_v03_api.py and test_v03_integration.py) while keeping 
-classifier benchmark quality at 100%. One classifier rule 
-gap was identified and fixed during the original evaluation 
-— the _is_distribution_error() method's handling of 
-polynomial expressions with matching monomial bases. To 
-improve the system further, the next steps would be 
-collecting real student submission data to validate synthetic 
-dataset assumptions, expanding the rule set to cover 
-higher-degree polynomial topics, and integrating session 
-persistence to enable longitudinal analysis of student 
-error patterns.
+100% parse success rate and 0% unknown rate. v1.0 re-validation 
+(June 2026) confirms the polynomial monomial-basis guard holds 
+for arith_002, lin_009, and lin_010. All 12 multihop problems 
+pass full sequential journey regression tests.

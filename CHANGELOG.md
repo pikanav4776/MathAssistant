@@ -18,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - **Signed-in session history** on problem selection (`GET /auth/me/sessions`, `SessionHistoryPanel`).
 - **Friendly error messages** for unsupported problems, auth errors, and network failures.
 - `friendlyErrorMessage` utility tests.
+- **Engine quality (Phase 6):** classifier regression tests (`arith_002`, `lin_009`, `lin_010`), live notation parse tests, multihop journey regression for all 12 problems.
+- v1.0 measured-results table in `reports/evaluation_report.md` and `Product_Spec.txt`.
 
 ### Changed
 
