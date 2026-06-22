@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import { AttemptHistory } from "../components/AttemptHistory";
 import { AttemptTracker } from "../components/AttemptTracker";
+import { CalculatorPanel } from "../components/CalculatorPanel";
 import { ExpressionDisplay } from "../components/ExpressionDisplay";
 import { FeedbackPanel } from "../components/FeedbackPanel";
 import { StepInputField } from "../components/StepInput";
@@ -12,6 +12,7 @@ interface ActiveSessionViewProps {
   onStepInputChange: (value: string) => void;
   onSubmitStep: () => void;
   onGiveUp: () => void;
+  onUseExpression: (expression: string) => void;
   feedback: FeedbackState | null;
   showFeedback: boolean;
   inputError: boolean;
@@ -28,6 +29,7 @@ export function ActiveSessionView({
   onStepInputChange,
   onSubmitStep,
   onGiveUp,
+  onUseExpression,
   feedback,
   showFeedback,
   inputError,
@@ -37,10 +39,6 @@ export function ActiveSessionView({
   onAttemptHistoryToggle,
   allGreenDots,
 }: ActiveSessionViewProps) {
-  useEffect(() => {
-    document.getElementById("step-input")?.focus();
-  }, []);
-
   const stepLabel = `Step ${Math.min(state.stepIndex, state.stepCount)}/${state.stepCount}`;
 
   return (
@@ -72,6 +70,12 @@ export function ActiveSessionView({
         submitDisabled={submitDisabled}
         submitLabel="Check Step"
         inputError={inputError}
+      />
+
+      <CalculatorPanel
+        onUseExpression={onUseExpression}
+        contextHint="step"
+        disabled={submitDisabled}
       />
 
       {showFeedback && feedback ? <FeedbackPanel feedback={feedback} /> : null}

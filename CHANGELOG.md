@@ -1,20 +1,24 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to MathAssistant are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers align with git tags when released.
 
-## [1.0.0] — 2026-06-22
+## [1.0.0] - 2026-06-22
 
 ### Added
 
 - **Calculator UI** on the problem-entry screen: QWERTY-style keypad, live preview, client-side heuristic validation, and **Use Expression** to fill the problem field.
+- **Calculator on active session** - same keypad under step input; **Use Expression** fills the step field.
 - **Auth foundation** (scaffolding only): `User` model with roles, bcrypt password hashing, JWT create/decode helpers, Alembic migration `b2c8e4f01a23`, and `test_auth.py`. Login/register endpoints and session ownership are deferred.
+- **Vitest** in CI: `expressionHeuristic` and `expressionTextLike` unit tests.
+- Mobile calculator CSS: 44px touch targets, 10-column grid on narrow screens.
 
 ### Changed
 
 - Product version unified to **v1.0 (Algebra Co-Solving)** across docs, API metadata, and UI subtitle.
 - Session timestamps use timezone-aware UTC (`_utc_now`) instead of deprecated `datetime.utcnow()`.
+- Calculator scope notes in UI: new problems stay algebra-only; sqrt/mod/comparisons not supported for problem entry.
 
 ### Documentation
 
@@ -22,7 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
-## [0.5.0] — 2026-06-19
+## [0.5.0] - 2026-06-19
 
 ### Added
 
@@ -30,7 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
-## [0.4.3] — 2026-06-18
+## [0.4.3] - 2026-06-18
 
 ### Fixed
 
@@ -38,7 +42,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
-## [0.4.0] — 2026-06-17
+## [0.4.0] - 2026-06-17
 
 ### Added
 
@@ -48,7 +52,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
-## [0.3.5] — 2026-06-16
+## [0.3.5] - 2026-06-16
 
 ### Added
 
@@ -57,7 +61,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 ---
 
-## [0.3.0] — 2026-06-15
+## [0.3.0] - 2026-06-15
 
 ### Added
 
@@ -65,7 +69,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - Session APIs: `POST /start-session`, `POST /submit-step`, `GET /session/{id}`.
 - PostgreSQL persistence (problems, sessions, attempts, solution paths).
 - Problem library: `GET /sample-problem`, `GET /problem/{id}`, `POST /problem` (admin, no auth).
-- Deterministic pipeline: parse → normalize → compare → classify → hint.
+- Deterministic pipeline: parse -> normalize -> compare -> classify -> hint.
 - Structured keyboard input only (`^` for exponents); no OCR.
 
 ### Scope limits (carried into v1.0)

@@ -27,6 +27,7 @@ export default function App() {
           onStepInputChange={session.setStepInput}
           onSubmitStep={session.handleSubmitStep}
           onGiveUp={session.handleGiveUp}
+          onUseExpression={session.applyExpression}
           feedback={session.feedback}
           showFeedback={session.showFeedback}
           inputError={session.inputError}

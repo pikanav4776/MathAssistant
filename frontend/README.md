@@ -12,7 +12,7 @@ See the root [README.md](../README.md) for full project setup (database, backend
 
 ## Development
 
-**Do not open `index.html` directly** (`file://`) — browsers block API requests.
+**Do not open `index.html` directly** (`file://`) â€” browsers block API requests.
 
 ### Ports
 
@@ -21,8 +21,8 @@ See the root [README.md](../README.md) for full project setup (database, backend
 | **Backend** (FastAPI) | **8000** | `.\start.ps1` from `backend/` | http://127.0.0.1:8000 |
 | **Frontend** (Vite) | **3000** | `npm run dev` from `frontend/` | http://localhost:3000 |
 
-**Do NOT** run `python -m http.server 8000` — that steals the backend port.
-**Do NOT** run `npm run dev` from the repo root — that is the deprecated Next.js demo in `app/`, not this frontend.
+**Do NOT** run `python -m http.server 8000` â€” that steals the backend port.
+**Do NOT** run `npm run dev` from the repo root â€” that is the deprecated Next.js demo in `app/`, not this frontend.
 
 ```powershell
 cd frontend
@@ -53,7 +53,7 @@ copy .env.example .env
 |----------|---------|---------|
 | `VITE_API_BASE_URL` | `http://127.0.0.1:8000` | FastAPI backend base URL |
 
-Backend auth-related variables (for when login endpoints ship) live in `backend/.env` — see `backend/.env.example`:
+Backend auth-related variables (for when login endpoints ship) live in `backend/.env` â€” see `backend/.env.example`:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
@@ -78,7 +78,7 @@ The static site service (`mathassistant-frontend` in [render.yaml](../render.yam
 
 1. **Build command:** `npm ci && VITE_API_BASE_URL=$API_BASE_URL npm run build`
 2. **Publish path:** `dist/`
-3. **Dashboard env var:** `API_BASE_URL` — backend public HTTPS URL (e.g. `https://mathassistant-api.onrender.com`, no trailing slash). Render injects this as `VITE_API_BASE_URL` at build time.
+3. **Dashboard env var:** `API_BASE_URL` â€” backend public HTTPS URL (e.g. `https://mathassistant-api.onrender.com`, no trailing slash). Render injects this as `VITE_API_BASE_URL` at build time.
 
 Staging uses the same pattern via [render-staging.yaml](../render-staging.yaml) (`mathassistant-frontend-staging`).
 
@@ -98,12 +98,12 @@ The original HTML/CSS/JS UI is preserved under `legacy/` for reference only (not
 
 ### Problem entry (text or calculator)
 
-1. **Enter a problem** — Type in the problem field **or** use the **calculator keypad** below it.
-2. **Calculator** — Tap keys to build an expression in the preview. Heuristic checks block empty input, text-like words, and unbalanced parentheses. Click **Use Expression** to copy the preview into the problem field (you still click **Start Session** separately).
-3. **Start session** — Calls `POST /start-session` with `problem_expression`.
-4. **Submit your next step** — Type one algebraic transformation in the step field and click **Check Step** (calculator on step entry is deferred to a later release).
-5. **Get iterative feedback** — Server compares to the expected next step, classifies errors, and advances only on correct submissions.
-6. **Finish** — Session completes once the final canonical step is reached (or reveal after repeated incorrect attempts).
+1. **Enter a problem** â€” Type in the problem field **or** use the **calculator keypad** below it.
+2. **Calculator** â€” Tap keys to build an expression in the preview. Heuristic checks block empty input, text-like words, and unbalanced parentheses. Click **Use Expression** to copy the preview into the problem field (you still click **Start Session** separately).
+3. **Start session** â€” Calls `POST /start-session` with `problem_expression`.
+4. **Submit your next step** â€” Type one algebraic transformation in the step field and click **Check Step** (calculator on step entry is deferred to a later release).
+5. **Get iterative feedback** â€” Server compares to the expected next step, classifies errors, and advances only on correct submissions.
+6. **Finish** â€” Session completes once the final canonical step is reached (or reveal after repeated incorrect attempts).
 
 ### Library example
 
@@ -127,7 +127,7 @@ Click **Try an example from library** to load `GET /sample-problem` into the pro
 - Refreshing the page mid-session loses client state (the session may still exist in the database until deleted).
 - Input notation errors (e.g. using `**` instead of `^`) show a warning and do not count toward the 5-attempt limit.
 - Equations / inequalities and non-keyboard math symbols are intentionally rejected in v1.0.
-- Calculator is on the **problem selection** screen only; step entry is keyboard-only for now.
+- Calculator is available on **problem selection** and **active session** screens.
 - No authentication UI in v1.0; all session APIs are anonymous.
 - Display-only expressions (current problem, history steps, completion screen) render with **KaTeX** via `algebraToLatex` + `MathExpression`. Step and problem inputs stay plain keyboard algebra; API payloads are unchanged.
 
@@ -135,32 +135,32 @@ Click **Try an example from library** to load `GET /sample-problem` into the pro
 
 ```
 frontend/
-  index.html              — Vite entry (React app)
-  package.json            — npm scripts and dependencies
-  vite.config.ts          — dev server on port 3000
-  .env.example            — VITE_API_BASE_URL template
-  start.ps1               — npm run dev helper
+  index.html              â€” Vite entry (React app)
+  package.json            â€” npm scripts and dependencies
+  vite.config.ts          â€” dev server on port 3000
+  .env.example            â€” VITE_API_BASE_URL template
+  start.ps1               â€” npm run dev helper
   src/
-    App.tsx               — view router
-    main.tsx              — React entry
-    api/client.ts         — typed API client
-    constants.ts          — attempt limits and error type sets
+    App.tsx               â€” view router
+    main.tsx              â€” React entry
+    api/client.ts         â€” typed API client
+    constants.ts          â€” attempt limits and error type sets
     hooks/
-      useSession.ts       — session state and handlers
-      useExpressionBuilder.ts — calculator expression state
-    types/api.ts          — TypeScript types from backend models
-    views/                — ProblemSelection, ActiveSession, SessionComplete
+      useSession.ts       â€” session state and handlers
+      useExpressionBuilder.ts â€” calculator expression state
+    types/api.ts          â€” TypeScript types from backend models
+    views/                â€” ProblemSelection, ActiveSession, SessionComplete
     components/
-      CalculatorPanel.tsx — problem-entry keypad UI
+      CalculatorPanel.tsx â€” problem-entry keypad UI
       AttemptTracker, FeedbackPanel, MathExpression, etc.
     utils/
-      algebraToLatex.ts   — keyboard algebra → LaTeX (display only)
-      expressionHeuristic.ts — client-side validation for calculator
-      expressionTokens.ts — keypad layout
-      expressionTextLike.ts — shared text-like input guard
+      algebraToLatex.ts   â€” keyboard algebra â†’ LaTeX (display only)
+      expressionHeuristic.ts â€” client-side validation for calculator
+      expressionTokens.ts â€” keypad layout
+      expressionTextLike.ts â€” shared text-like input guard
     styles/
-      global.css          — app styles
-      calculator.css      — calculator panel styles
-  legacy/                 — original vanilla HTML/CSS/JS (reference only)
-  README.md               — this file
+      global.css          â€” app styles
+      calculator.css      â€” calculator panel styles
+  legacy/                 â€” original vanilla HTML/CSS/JS (reference only)
+  README.md               â€” this file
 ```

@@ -9,12 +9,21 @@ export interface CalculatorPanelProps {
   disabled?: boolean;
 }
 
+const SCOPE_NOTES: Record<ExpressionContextHint, string> = {
+  problem:
+    "New problems: keyboard algebra only (+ - * / ^ and parentheses). sqrt, mod, and comparisons are not supported.",
+  step:
+    "Build one algebra step for this problem. The tutor validates against the canonical path (sqrt/mod keys are for notation only).",
+};
+
 function TokenButton({
   token,
   onPress,
+  disabled,
 }: {
   token: ExpressionToken;
   onPress: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -22,6 +31,7 @@ function TokenButton({
       className="calc-btn"
       aria-label={token.ariaLabel ?? token.label}
       title={token.title}
+      disabled={disabled}
       onClick={() => onPress(token.value)}
     >
       {token.label}
@@ -32,14 +42,21 @@ function TokenButton({
 function KeypadRow({
   tokens,
   onPress,
+  disabled,
 }: {
   tokens: ExpressionToken[];
   onPress: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="calc-row">
       {tokens.map((token) => (
-        <TokenButton key={`${token.label}-${token.value}`} token={token} onPress={onPress} />
+        <TokenButton
+          key={`${token.label}-${token.value}`}
+          token={token}
+          onPress={onPress}
+          disabled={disabled}
+        />
       ))}
     </div>
   );
@@ -47,7 +64,7 @@ function KeypadRow({
 
 export function CalculatorPanel({
   onUseExpression,
-  contextHint,
+  contextHint = "problem",
   disabled = false,
 }: CalculatorPanelProps) {
   const {
@@ -75,20 +92,28 @@ export function CalculatorPanel({
     const trimmed = expression.trim();
     if (!trimmed || disabled || !heuristic.isValid) return;
     onUseExpression(trimmed);
+    clear();
+  };
+
+  const handleAppend = (value: string) => {
+    if (disabled) return;
+    appendToken(value);
   };
 
   return (
     <section className="calculator-panel" aria-label="Expression calculator">
-      <label className="calc-preview-label" htmlFor="calc-expression-preview">
+      <label className="calc-preview-label" htmlFor={`calc-preview-${contextHint}`}>
         Enter Expression
       </label>
       <div
-        id="calc-expression-preview"
+        id={`calc-preview-${contextHint}`}
         className={previewClass}
         aria-live="polite"
       >
         {expression || <span className="calc-preview__placeholder"> </span>}
       </div>
+
+      <p className="calc-scope-note">{SCOPE_NOTES[contextHint]}</p>
 
       {showValidationError ? (
         <p className="calc-feedback calc-feedback--error">{heuristic.errors[0]}</p>
@@ -103,6 +128,7 @@ export function CalculatorPanel({
           type="button"
           className="calc-btn"
           aria-label="Clear"
+          disabled={disabled}
           onClick={clear}
         >
           C
@@ -111,6 +137,7 @@ export function CalculatorPanel({
           type="button"
           className="calc-btn"
           aria-label="Backspace"
+          disabled={disabled}
           onClick={backspace}
         >
           ⌫
@@ -118,7 +145,12 @@ export function CalculatorPanel({
       </div>
 
       {CALCULATOR_KEYPAD_ROWS.map((row, index) => (
-        <KeypadRow key={`row-${index}`} tokens={row} onPress={appendToken} />
+        <KeypadRow
+          key={`row-${index}`}
+          tokens={row}
+          onPress={handleAppend}
+          disabled={disabled}
+        />
       ))}
 
       <button
