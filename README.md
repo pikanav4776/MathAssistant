@@ -8,7 +8,7 @@ Algebra step-validation tutor — guides students through multi-step simplificat
 
 MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreSQL). Students submit one algebraic step at a time; the backend parses, normalizes, compares against the canonical solution path, classifies errors, and returns contextual hints. Skip-ahead is accepted when a later canonical step is submitted. It is **not** a chatbot or LLM answer engine.
 
-**v1.0 scope:** algebra co-solving with single- and multi-hop canonical paths (distribute-then-combine, FOIL-then-combine), structured text input and calculator keypad on problem entry (no OCR), seed problem library (no auto-generation), auth foundation (schema + utilities; login deferred). See [documentation/v1.0_Scope.md](documentation/v1.0_Scope.md) for in-scope vs deferred, [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for product goals, and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design. Version history: [CHANGELOG.md](CHANGELOG.md).
+**v1.0 scope:** algebra co-solving with single- and multi-hop canonical paths, calculator UI, 72-problem library with starter set, optional auth (guest or account), session resume and history, production rate limits and deploy checks. See [documentation/v1.0_Scope.md](documentation/v1.0_Scope.md) for in-scope vs deferred, [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for product goals, and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design. Version history: [CHANGELOG.md](CHANGELOG.md). Release: [documentation/v1.0_Release_Checklist.md](documentation/v1.0_Release_Checklist.md).
 
 ---
 

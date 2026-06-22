@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 
 - **Calculator UI** on the problem-entry screen: QWERTY-style keypad, live preview, client-side heuristic validation, and **Use Expression** to fill the problem field.
 - **Calculator on active session** - same keypad under step input; **Use Expression** fills the step field.
-- **Auth foundation** (scaffolding only): `User` model with roles, bcrypt password hashing, JWT create/decode helpers, Alembic migration `b2c8e4f01a23`, and `test_auth.py`. Login/register endpoints and session ownership are deferred.
+- **Auth:** register, login, JWT middleware, guest mode, session ownership (Phase 4).
 - **Vitest** in CI: `expressionHeuristic` and `expressionTextLike` unit tests.
 - Mobile calculator CSS: 44px touch targets, 10-column grid on narrow screens.
 - **Session resume** after page refresh via `sessionStorage` and enriched `GET /session/{id}`.
@@ -22,19 +22,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version
 - v1.0 measured-results table in `reports/evaluation_report.md` and `Product_Spec.txt`.
 - **Problem library (Phase 7):** library audit tests, canonical `expected_final` fixes, `GET /problems/starter`, starter problems UI, `POST /problem` engine validation.
 - **Production hardening (Phase 8):** per-IP rate limits on `/auth/login`, `/auth/register`, `/start-session`, `/submit-step`; Render `JWT_SECRET` startup guard; CI `alembic check`; health probe tests; release checklist and security docs.
+- **Release (Phase 10):** manual QA script, API smoke test script, v1.0.0 release notes draft, updated interview/demo materials.
 
 ### Changed
 
 - Product version unified to **v1.0 (Algebra Co-Solving)** across docs, API metadata, and UI subtitle.
 - CI runs `alembic upgrade head` and `alembic check` before pytest.
-- `render.yaml` / `render-staging.yaml` document required `JWT_SECRET` env var.
 - Sessions are **finalized** instead of deleted on complete, so `session_summaries` rows are retained.
-- Session timestamps use timezone-aware UTC (`_utc_now`) instead of deprecated `datetime.utcnow()`.
-- Calculator scope notes in UI: new problems stay algebra-only; sqrt/mod/comparisons not supported for problem entry.
 
 ### Documentation
 
 - `CHANGELOG.md`, `documentation/v1.0_Scope.md`, and updated README / architecture / frontend docs.
+- `documentation/v1.0_Manual_QA.md`, `documentation/v1.0_Release_Checklist.md`, `documentation/releases/v1.0.0_RELEASE_NOTES.md`, `scripts/smoke_test_api.ps1`.
 
 ---
 
