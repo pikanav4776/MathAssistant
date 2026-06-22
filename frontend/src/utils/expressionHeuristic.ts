@@ -1,4 +1,4 @@
-import { containsTextLikeInput } from "./expressionTextLike";
+﻿import { containsTextLikeInput } from "./expressionTextLike";
 
 export type ExpressionContextHint = "problem" | "step";
 
@@ -10,7 +10,7 @@ export interface HeuristicResult {
 
 const TRAILING_OPERATOR_PATTERN = /(?:[+\-*/^]|<=|>=|==|!=|<|>)$/;
 
-const V03_UNSUPPORTED_FOR_PROBLEMS = /(?:sqrt\s*\(|mod\s*\(|<=|>=|==|!=|<|>)/i;
+const V10_UNSUPPORTED_FOR_PROBLEMS = /(?:sqrt\s*\(|mod\s*\(|<=|>=|==|!=|<|>)/i;
 
 function countParentheses(expression: string): { open: number; close: number } {
   let open = 0;
@@ -53,9 +53,9 @@ export function validateExpressionHeuristic(
     warnings.push("Expression ends with an operator.");
   }
 
-  if (contextHint === "problem" && V03_UNSUPPORTED_FOR_PROBLEMS.test(trimmed)) {
+  if (contextHint === "problem" && V10_UNSUPPORTED_FOR_PROBLEMS.test(trimmed)) {
     warnings.push(
-      "Comparisons, sqrt, and mod are not supported for new problems in v0.3."
+      "Comparisons, sqrt, and mod are not supported for new problems in v1.0."
     );
   }
 

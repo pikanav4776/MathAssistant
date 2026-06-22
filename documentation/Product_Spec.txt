@@ -1,6 +1,6 @@
-Product name: MathAssistant
-Version: v0.2 (MVP)
-Last updated: June 16, 2026
+﻿Product name: MathAssistant
+Version: v1.0 (Algebra Co-Solving)
+Last updated: June 22, 2026
 
 ================================================================================
 PROBLEM STATEMENT
@@ -83,6 +83,8 @@ Included:
 	- attempt tracking
 	- final answer verification
 	- pre-seeded problem library (GET /sample-problem returns stored problems)
+	- calculator keypad on problem entry (v1.0)
+	- auth foundation: users table, password hashing, JWT utilities (endpoints deferred)
 
 Excluded:
 	- OCR / image processing

@@ -1,26 +1,26 @@
-"""
-MathAssistant – FastAPI + SymPy tutoring backend
+﻿"""
+MathAssistant â€“ FastAPI + SymPy tutoring backend
 =================================================
 Data flow (one request):
 
   raw student string  (^ or ** for exponents, e.g. x^2 or x**2)
-       │
-       ▼
+       â”‚
+       â–¼
   [PARSING LAYER]        parser()              pre-process & sympify
-       │
-       ▼
-  [NORMALIZATION LAYER]  normalize()           expand → collect → simplify
-       │
-       ▼
+       â”‚
+       â–¼
+  [NORMALIZATION LAYER]  normalize()           expand â†’ collect â†’ simplify
+       â”‚
+       â–¼
   [COMPARISON LAYER]     comparison()          equivalence check + structural diff
-       │
-       ▼
+       â”‚
+       â–¼
   [CLASSIFICATION LAYER] classify_error()      deterministic rule-based error taxonomy
-       │
-       ▼
-  [HINT ENGINE]          generate_hint()       error_type → hint string
-       │
-       ▼
+       â”‚
+       â–¼
+  [HINT ENGINE]          generate_hint()       error_type â†’ hint string
+       â”‚
+       â–¼
   JSON response
 
 Note: solve(), integrate(), and diff() are not used on the MVP validation path.
@@ -138,16 +138,16 @@ _UNDEFINED_TEXT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"oo\s*-\s*oo", re.I), "infinity minus infinity is undefined"),
 ]
 
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # App bootstrap
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     yield
 
 
-app = FastAPI(title="MathAssistant", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="MathAssistant", version="1.0.0", lifespan=lifespan)
 
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:3000",
@@ -173,9 +173,9 @@ app.add_middleware(
 )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Request / response models
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class StepInput(BaseModel):
     session_id: str
     step: str
@@ -266,9 +266,9 @@ class SessionState:
     last_active: datetime = field(default_factory=_utc_now)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Input / engine exceptions (never expose raw SymPy messages to students)
-# ──────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class MathInputError(ValueError):
     """Base for user-input problems detected before or during parsing."""
 
@@ -282,7 +282,7 @@ class MathInputError(ValueError):
 
 
 class ParseError(MathInputError):
-    """Legacy alias — malformed or unsupported input."""
+    """Legacy alias â€” malformed or unsupported input."""
 
     category = "malformed_syntax"
 
@@ -297,7 +297,7 @@ class MalformedSyntaxError(ParseError):
     """Syntactically broken input."""
 
     category = "malformed_syntax"
-    user_message = "Check operators and parentheses — something in the syntax is invalid."
+    user_message = "Check operators and parentheses â€” something in the syntax is invalid."
 
 
 class DivisionByZeroError(ParseError):
@@ -329,7 +329,7 @@ class EvaluationTimeoutError(ParseError):
 
 
 class EngineError(Exception):
-    """Unexpected internal failure — logged, generic message to client."""
+    """Unexpected internal failure â€” logged, generic message to client."""
 
     category = "engine_error"
     user_message = "Something went wrong while checking your step. Please try again."
@@ -347,9 +347,9 @@ def _user_safe_hint_for_input_error(exc: MathInputError) -> str:
     return exc.user_message
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # SymPy helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 def _run_timed(func: Callable[..., T], *args, timeout: float = _NORMALIZE_TIMEOUT_SEC, **kwargs) -> T:
     future = _EXECUTOR.submit(func, *args, **kwargs)
     try:
@@ -451,12 +451,12 @@ def _format_symbol_key(key: str) -> str:
     return f"the {key} term"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # HINT ENGINE
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 _HINT_LEVELS: dict[str, dict[int, str]] = {
     "sign_error": {
-        1: "Check the sign on {focus} — a plus/minus mix-up is common here.",
+        1: "Check the sign on {focus} â€” a plus/minus mix-up is common here.",
         2: "Focus on {focus}: does your coefficient have the opposite sign from what you intended?",
     },
     "arithmetic_error": {
@@ -465,7 +465,7 @@ _HINT_LEVELS: dict[str, dict[int, str]] = {
     },
     "distribution_error": {
         1: "When you multiply, each term inside the parentheses must be included.",
-        2: "Your expansion may be missing a piece — multiply through each term inside the parentheses separately.",
+        2: "Your expansion may be missing a piece â€” multiply through each term inside the parentheses separately.",
     },
     "unknown": {
         1: "Compare your step to the previous line term by term.",
@@ -477,7 +477,7 @@ _HINT_LEVELS: dict[str, dict[int, str]] = {
     },
     "term_reorder": {
         1: "Reordering terms is a valid rewrite, but it is not the next solving step. Apply the required operation.",
-        2: "The expression is equivalent to the current line — expand or simplify to move forward.",
+        2: "The expression is equivalent to the current line â€” expand or simplify to move forward.",
     },
 }
 
@@ -514,9 +514,9 @@ def generate_hint(
     return template.format(focus=focus)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # STEP VALIDATOR
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class StepValidator:
     """This class is used to validate a step of a problem."""
 
@@ -547,8 +547,8 @@ class StepValidator:
             normalized = expand(e)
             for sym in normalized.free_symbols:
                 normalized = collect(normalized, sym)
-            # collect() can factor polynomials (e.g. 7x^2+x → x*(7x+1)), which
-            # breaks structural term/coefficient comparison — re-expand to sum form.
+            # collect() can factor polynomials (e.g. 7x^2+x â†’ x*(7x+1)), which
+            # breaks structural term/coefficient comparison â€” re-expand to sum form.
             return expand(simplify(normalized))
 
         return _run_timed(_pipeline, expr)
@@ -642,7 +642,7 @@ class StepValidator:
         extra_terms: list[str],
     ) -> bool:
         """SymPy sometimes swaps explicit constant terms (e.g. +1 vs +2) without
-        dropping a monomial — not a missing-term distribution mistake."""
+        dropping a monomial â€” not a missing-term distribution mistake."""
         from sympy import sympify as _sympify
 
         if not missing_terms or not extra_terms:
@@ -824,7 +824,7 @@ def _apply_session_hint_policy(session: SessionState, result: StepResult) -> Ste
         not result.is_equivalent
         and session.incorrect_attempt_count >= MAX_ATTEMPTS_BEFORE_REVEAL
     ):
-        hint = f"{hint} — Solution: {session.expected_final}"
+        hint = f"{hint} â€” Solution: {session.expected_final}"
 
     return result.model_copy(update={"hint": hint})
 
@@ -1568,13 +1568,13 @@ def delete_session(session_id: str, db: OrmSession = Depends(get_db)):
 
 @app.get("/health")
 def health():
-    """Liveness probe — no database check."""
+    """Liveness probe â€” no database check."""
     return {"status": "ok"}
 
 
 @app.get("/ready")
 def ready():
-    """Readiness probe — verifies database connectivity."""
+    """Readiness probe â€” verifies database connectivity."""
     if not check_db_connection():
         raise HTTPException(
             status_code=503,
@@ -1585,4 +1585,4 @@ def ready():
 
 @app.get("/")
 def root():
-    return {"status": "MathAssistant backend is running!", "version": "0.3.0"}
+    return {"status": "MathAssistant backend is running!", "version": "1.0.0"}

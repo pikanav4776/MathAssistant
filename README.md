@@ -1,6 +1,6 @@
 # MathAssistant
 
-**Version:** v0.3 (Algebra Co-Solving)
+**Version:** v1.0 (Algebra Co-Solving)
 
 ## Summary
 
@@ -8,7 +8,7 @@ Algebra step-validation tutor — guides students through multi-step simplificat
 
 MathAssistant is a **deterministic** tutoring system (FastAPI + SymPy + PostgreSQL). Students submit one algebraic step at a time; the backend parses, normalizes, compares against the canonical solution path, classifies errors, and returns contextual hints. Skip-ahead is accepted when a later canonical step is submitted. It is **not** a chatbot or LLM answer engine.
 
-**v0.3 scope:** algebra co-solving with single- and multi-hop canonical paths (distribute-then-combine, FOIL-then-combine), structured text input (no OCR), seed problem library (no auto-generation). See [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for full product scope and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design.
+**v1.0 scope:** algebra co-solving with single- and multi-hop canonical paths (distribute-then-combine, FOIL-then-combine), structured text input and calculator keypad on problem entry (no OCR), seed problem library (no auto-generation), auth foundation (schema + utilities; login deferred). See [documentation/v1.0_Scope.md](documentation/v1.0_Scope.md) for in-scope vs deferred, [documentation/Product_Spec.txt](documentation/Product_Spec.txt) for product goals, and [documentation/Technical_Architecture_Spec.txt](documentation/Technical_Architecture_Spec.txt) for detailed design. Version history: [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -81,7 +81,7 @@ cd frontend
 .\start.ps1
 ```
 
-Open [http://localhost:3000](http://localhost:3000). You should see **"Algebra Co-Solving (v0.3)"**.
+Open [http://localhost:3000](http://localhost:3000). You should see **"Algebra Co-Solving (v1.0)"**.
 
 > Do **not** open `frontend/index.html` via `file://` — the browser will block API calls.
 > Do **not** use port 8000 for the frontend; that is the backend.

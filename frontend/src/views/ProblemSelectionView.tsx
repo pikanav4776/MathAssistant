@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+﻿import type { KeyboardEvent } from "react";
 import { CalculatorPanel } from "../components/CalculatorPanel";
 
 interface ProblemSelectionViewProps {
@@ -30,7 +30,7 @@ export function ProblemSelectionView({
     <section className="view">
       <header className="view-header">
         <h1 className="app-title">MathAssistant</h1>
-        <p className="app-subtitle">Algebra Co-Solving (v0.3)</p>
+        <p className="app-subtitle">Algebra Co-Solving (v1.0)</p>
       </header>
 
       <div className="input-area">

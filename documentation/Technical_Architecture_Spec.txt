@@ -1,24 +1,24 @@
 Technical Architecture Spec
-Version: v0.3 (Algebra Co-Solving)
-Last updated: June 18, 2026
+Version: v1.0 (Algebra Co-Solving)
+Last updated: June 22, 2026
 
 ================================================================================
 SYSTEM OVERVIEW
 ================================================================================
 
-Frontend → FastAPI API → Session Manager → Step Engine (canonical path) →
-Parsing → Normalization → Comparison → Error Classification → Hint Engine → Response
+Frontend â†’ FastAPI API â†’ Session Manager â†’ Step Engine (canonical path) â†’
+Parsing â†’ Normalization â†’ Comparison â†’ Error Classification â†’ Hint Engine â†’ Response
 
 Per-request pipeline (backend/main.py):
 
-	raw student string (^ for exponents, e.g. x^2 — not **)
-	  → step_engine.build_solution_plan()  canonical multi-hop path (on session start)
-	  → parser()           pre-process and sympify
-	  → normalize()        expand, collect, simplify
-	  → comparison()       equivalence check + structural diff
-	  → classify_error()   deterministic rule-based taxonomy
-	  → generate_hint()    error_type → hint string
-	  → JSON response
+	raw student string (^ for exponents, e.g. x^2 â€” not **)
+	  â†’ step_engine.build_solution_plan()  canonical multi-hop path (on session start)
+	  â†’ parser()           pre-process and sympify
+	  â†’ normalize()        expand, collect, simplify
+	  â†’ comparison()       equivalence check + structural diff
+	  â†’ classify_error()   deterministic rule-based taxonomy
+	  â†’ generate_hint()    error_type â†’ hint string
+	  â†’ JSON response
 
 v0.3 session flow validates each submission against the immediate expected
 canonical step, with skip-ahead when a later path step matches. Factor reorder
@@ -74,10 +74,10 @@ MathAssistant/
 	render-staging.yaml Render Blueprint for staging deploy
 
 Related docs:
-	documentation/Product_Spec.txt          — problem statement, goals, MVP scope
-	documentation/Current_Plan.txt          — phased development plan and status
-	documentation/Post_MVP_Features.md      — post-MVP ideas (e.g. opt-in activity summaries)
-	frontend/README.md                      — frontend setup and user flow
+	documentation/Product_Spec.txt          â€” problem statement, goals, MVP scope
+	documentation/Current_Plan.txt          â€” phased development plan and status
+	documentation/Post_MVP_Features.md      â€” post-MVP ideas (e.g. opt-in activity summaries)
+	frontend/README.md                      â€” frontend setup and user flow
 
 ================================================================================
 SYSTEM COMPONENTS
@@ -93,8 +93,17 @@ Problem Session Manager
 	track attempts, store steps, manage hint level, current_expression,
 	current_step_id, and completed flag (v0.3)
 
+
+Auth foundation (v1.0)
+	backend/auth/ — bcrypt password hashing, JWT create/decode (no API routes yet)
+	users table — email, password_hash, role (user|admin); Alembic b2c8e4f01a23
+
+Calculator UI (v1.0)
+	frontend CalculatorPanel — problem-entry keypad; expressionHeuristic client validation
+	Use Expression copies preview into problem field via useSession.applyExpression
+
 Step Engine (v0.3)
-	build_solution_plan() — detect topic, emit canonical intermediate steps
+	build_solution_plan() - detect topic, emit canonical intermediate steps
 	for distribute+constant sums and FOIL products before final combine
 
 Step Parsing Layer
@@ -144,45 +153,45 @@ problems
 
 problem_wrong_answers
 	id              Integer (PK, autoincrement)
-	problem_id      String (FK → problems.id)
+	problem_id      String (FK â†’ problems.id)
 	wrong_step      Text
 	error_type      String
 	description     Text (optional)
 
 sessions
 	session_id                  String (PK)
-	problem_id                  String (FK → problems.id)
+	problem_id                  String (FK â†’ problems.id)
 	attempt_count               Integer
 	incorrect_attempt_count     Integer
 	hint_level                  Integer
-	current_step_id             Integer (FK → solution_steps.sol_step_id, optional)
-	current_expression          Text (v0.3 — line student is simplifying from)
+	current_step_id             Integer (FK â†’ solution_steps.sol_step_id, optional)
+	current_expression          Text (v0.3 â€” line student is simplifying from)
 	completed                   Boolean (v0.3)
 	created_at                  DateTime
 	last_active                 DateTime
 
 solution_paths
 	sol_path_id     Integer (PK)
-	problem_id      String (FK → problems.id)
+	problem_id      String (FK â†’ problems.id)
 	sol_path_name   String
 	is_primary      Boolean
 
 solution_steps
 	sol_step_id             Integer (PK)
-	path_id                 Integer (FK → solution_paths.sol_path_id)
+	path_id                 Integer (FK â†’ solution_paths.sol_path_id)
 	step_order              Integer
 	sol_step_expression     Text
 	hint_template           Text (optional)
 
 attempts
 	id              Integer (PK, autoincrement)
-	session_id      String (FK → sessions.session_id)
+	session_id      String (FK â†’ sessions.session_id)
 	step            Text
 	expected        Text
 	is_equivalent   Boolean
 	error_type      String (optional)
 	hint            Text (optional)
-	step_order      Integer (v0.3 — which path step the attempt targeted)
+	step_order      Integer (v0.3 â€” which path step the attempt targeted)
 	timestamp       DateTime
 
 users
@@ -195,7 +204,7 @@ CORE ALGORITHM
 ================================================================================
 
 1. Parse the student's algebraic expression (sympify with pre-parse guards).
-2. Normalize via expand → collect → simplify.
+2. Normalize via expand â†’ collect â†’ simplify.
 3. Compare the submitted step against the immediate expected canonical step
    (or accept skip-ahead to a later path step).
 4. If not equivalent, classify the error with deterministic rules
@@ -234,7 +243,7 @@ GET    /
 	Root status JSON (version string); not the Render health check
 
 GET    /health
-	Liveness: {"status": "ok"} — no database access
+	Liveness: {"status": "ok"} â€” no database access
 
 GET    /ready
 	Readiness: {"status": "ok", "db": "connected"} or HTTP 503 if DB unreachable
@@ -299,10 +308,10 @@ CI/CD
 
 How CI and CD work together:
 
-	Feature branch → open PR → GitHub Actions runs pytest + frontend build (CI)
-	  → merge to main (blocked until the CI check passes, if branch protection is on)
-	  → push to main re-runs CI and triggers Render auto-deploy (CD)
-	  → Render builds and deploys mathassistant-api + mathassistant-frontend
+	Feature branch â†’ open PR â†’ GitHub Actions runs pytest + frontend build (CI)
+	  â†’ merge to main (blocked until the CI check passes, if branch protection is on)
+	  â†’ push to main re-runs CI and triggers Render auto-deploy (CD)
+	  â†’ Render builds and deploys mathassistant-api + mathassistant-frontend
 
 GitHub Actions validates code only; it does not deploy. Render watches the main
 branch and redeploys on each push. Branch protection ties them together: broken
@@ -316,8 +325,8 @@ Workflow: .github/workflows/ci.yml
 Triggers: every pull request; pushes to main
 
 Jobs:
-	frontend — npm ci and npm run build in frontend/ (Vite production bundle verification)
-	test     — pytest backend/tests/ with PostgreSQL service container
+	frontend â€” npm ci and npm run build in frontend/ (Vite production bundle verification)
+	test     â€” pytest backend/tests/ with PostgreSQL service container
 
 Backend test steps:
 	1. Start PostgreSQL 16 service container (test / test, database mathassistant).
@@ -329,10 +338,10 @@ Backend test steps:
 
 GitHub branch protection (require CI before merge):
 
-	Cannot be enforced from the repo alone — configure in GitHub UI:
+	Cannot be enforced from the repo alone â€” configure in GitHub UI:
 
 	1. Open the MathAssistant repository on GitHub.
-	2. Settings → Branches → Add branch protection rule (or Edit rule for main).
+	2. Settings â†’ Branches â†’ Add branch protection rule (or Edit rule for main).
 	3. Branch name pattern: main
 	4. Enable Require a pull request before merging (recommended).
 	5. Enable Require status checks to pass before merging.
@@ -359,13 +368,13 @@ Health check path: /health (liveness). Use GET /ready to verify DB connectivity.
 Schema on deploy:
 	- Fresh Neon DB: alembic upgrade head creates all tables (revision f3a7b2c91d04).
 	- Existing prod DB (tables already present): one-time `alembic stamp head` from
-	  backend/ with DATABASE_URL set — see documentation/Database_Operations.md.
+	  backend/ with DATABASE_URL set â€” see documentation/Database_Operations.md.
 	- Local dev: init_db() may still create_all() when ENVIRONMENT=development,
 	  SKIP_MIGRATIONS=true, or DATABASE_URL points at localhost.
 
 1. Connect GitHub repo to Render
 	- Sign in to Render Dashboard (https://dashboard.render.com).
-	- Click New + → Blueprint.
+	- Click New + â†’ Blueprint.
 	- Connect GitHub account if prompted, select the MathAssistant repository.
 	- Render reads render.yaml and shows the two services to create. Continue.
 
@@ -381,7 +390,7 @@ Schema on deploy:
 	|--------------------------|----------------|--------------------------------------------------------------|
 	| mathassistant-api        | DATABASE_URL   | postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/neondb?sslmode=require (Neon pooled connection string) |
 	| mathassistant-api        | CORS_ORIGINS   | https://mathassistant-frontend.onrender.com (static site URL, no trailing slash) |
-	| mathassistant-api        | SENTRY_DSN     | Optional. From sentry.io project → Client Keys (DSN). Omit to disable. |
+	| mathassistant-api        | SENTRY_DSN     | Optional. From sentry.io project â†’ Client Keys (DSN). Omit to disable. |
 	| mathassistant-api        | SENTRY_TRACES_SAMPLE_RATE | Optional. Default 0.1 when SENTRY_DSN is set. |
 	| mathassistant-frontend   | API_BASE_URL   | https://mathassistant-api.onrender.com (backend URL, HTTPS, no trailing slash). Injected at build time as VITE_API_BASE_URL. |
 
@@ -392,18 +401,18 @@ Schema on deploy:
 
 	For each service (mathassistant-api and mathassistant-frontend):
 	- Open the service in Render Dashboard.
-	- Go to Settings → Build & Deploy.
+	- Go to Settings â†’ Build & Deploy.
 	- Set Branch to main.
 	- Ensure Auto-Deploy is On.
 
 	Do not enable auto-deploy on feature branches.
 
 5. Verify deploy worked
-	- Backend liveness: https://<mathassistant-api-host>/health — expect {"status":"ok"}.
-	- Backend readiness: https://<mathassistant-api-host>/ready — expect db connected.
-	- Root: https://<mathassistant-api-host>/ — still returns version JSON.
+	- Backend liveness: https://<mathassistant-api-host>/health â€” expect {"status":"ok"}.
+	- Backend readiness: https://<mathassistant-api-host>/ready â€” expect db connected.
+	- Root: https://<mathassistant-api-host>/ â€” still returns version JSON.
 	- API docs: https://<mathassistant-api-host>/docs should load.
-	- Frontend: https://<mathassistant-frontend-host>/ — expect Algebra Co-Solving (v0.3).
+	- Frontend: https://<mathassistant-frontend-host>/ â€” expect Algebra Co-Solving (v1.0).
 	- Submit a sample step; browser should call API without CORS errors.
 	- If SENTRY_DSN is set, trigger a test error or use Sentry's "Send test event".
 
@@ -420,13 +429,13 @@ Neon database setup
 
 	1. Create a project at neon.tech (free tier sufficient for MVP).
 	2. Create a database (default name often neondb).
-	3. In Neon console: Connection details → copy Pooled connection string.
+	3. In Neon console: Connection details â†’ copy Pooled connection string.
 	4. Append ?sslmode=require if not already in the URL.
 	5. Paste into Render as DATABASE_URL on mathassistant-api.
 	6. On first deploy, Render runs `alembic upgrade head` then starts the API;
 	   init_db() seeds problems/wrong answers on startup (no create_all in prod).
 
-Local dev: put the same URL (or local Postgres URL) in backend/.env — see
+Local dev: put the same URL (or local Postgres URL) in backend/.env â€” see
 backend/.env.example.
 
 See also: render.yaml, render-staging.yaml, documentation/Database_Operations.md,
@@ -443,7 +452,7 @@ Use render-staging.yaml for a second Blueprint with isolated services:
 
 Apply second Blueprint:
 
-	1. Render Dashboard → New + → Blueprint.
+	1. Render Dashboard â†’ New + â†’ Blueprint.
 	2. Select the same MathAssistant GitHub repo.
 	3. When prompted for the Blueprint file, choose render-staging.yaml
 	   (or specify path if Render asks).
@@ -454,7 +463,7 @@ Apply second Blueprint:
 	5. Apply. Point each service's deploy branch to main (or a staging branch if
 	   you prefer manual promote).
 
-Neon: create a branch per environment (e.g. main → production, staging → staging).
+Neon: create a branch per environment (e.g. main â†’ production, staging â†’ staging).
 Use the staging branch connection string only on mathassistant-api-staging.
 Never share production DATABASE_URL with staging.
 
@@ -476,8 +485,8 @@ Missing or empty SENTRY_DSN does not crash the app.
 Setup:
 
 	1. Create a project at https://sentry.io (FastAPI/Python).
-	2. Copy the DSN from Project Settings → Client Keys.
-	3. In Render → mathassistant-api → Environment → add SENTRY_DSN (sync: false).
+	2. Copy the DSN from Project Settings â†’ Client Keys.
+	3. In Render â†’ mathassistant-api â†’ Environment â†’ add SENTRY_DSN (sync: false).
 	4. Optional: SENTRY_TRACES_SAMPLE_RATE (default 0.1).
 	5. Redeploy. Confirm events in Sentry Issues or send a test event from the UI.
 

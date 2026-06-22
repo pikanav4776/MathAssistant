@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { validateExpressionHeuristic } from "./expressionHeuristic";
 
 describe("validateExpressionHeuristic", () => {
@@ -20,14 +20,14 @@ describe("validateExpressionHeuristic", () => {
     expect(result.warnings).toContain("Expression ends with an operator.");
   });
 
-  it("warns about v0.3 unsupported syntax in problem context", () => {
+  it("warns about v1.0 unsupported syntax in problem context", () => {
     const result = validateExpressionHeuristic("sqrt(x)", "problem");
-    expect(result.warnings.some((w) => w.includes("v0.3"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("v1.0"))).toBe(true);
   });
 
   it("does not warn about comparisons in step context", () => {
     const result = validateExpressionHeuristic("x <= 5", "step");
-    expect(result.warnings.some((w) => w.includes("v0.3"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("v1.0"))).toBe(false);
   });
 
   it("rejects word-like text input", () => {
