@@ -105,15 +105,20 @@ The original HTML/CSS/JS UI is preserved under `legacy/` for reference only (not
 5. **Get iterative feedback** â€” Server compares to the expected next step, classifies errors, and advances only on correct submissions.
 6. **Finish** â€” Session completes once the final canonical step is reached (or reveal after repeated incorrect attempts).
 
-### Library example
+### Starter problems
 
-Click **Try an example from library** to load `GET /sample-problem` into the problem field, then start the session as above.
+Use the **Starter problems** panel to pick a curated example (12 problems covering all topics). Filter by topic or difficulty, then click a problem to start immediately.
+
+### Random library example
+
+Click **Try a random example** to load `GET /sample-problem` into the problem field and start a session.
 
 ## API endpoints used
 
 | Action | Endpoint |
 |--------|----------|
-| Load example problem | `GET /sample-problem` |
+| List starter problems | `GET /problems/starter?topic=&difficulty=` |
+| Load random example | `GET /sample-problem` |
 | Start tutoring | `POST /start-session` |
 | Check step | `POST /submit-step` |
 | Load session (give up) | `GET /session/{id}` |

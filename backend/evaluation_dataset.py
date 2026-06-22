@@ -241,7 +241,7 @@ EVALUATION_DATASET: list[dict] = [
     entry(
         "dist_019",
         "-3(2x-1)",
-        "-6x+3",
+        "3-6x",
         "medium",
         "distribution",
         [
@@ -264,7 +264,7 @@ EVALUATION_DATASET: list[dict] = [
     entry(
         "sign_001",
         "x+3-2x+1",
-        "-x+4",
+        "4-x",
         "easy",
         "simplification",
         [
@@ -462,7 +462,7 @@ EVALUATION_DATASET: list[dict] = [
     entry(
         "simp_013",
         "x-5x+8",
-        "-4x+8",
+        "8-4x",
         "hard",
         "simplification",
         [
@@ -673,7 +673,7 @@ EVALUATION_DATASET: list[dict] = [
     entry(
         "lin_008",
         "3x+4-5x+6",
-        "-2x+10",
+        "10-2x",
         "medium",
         "linear_steps",
         [

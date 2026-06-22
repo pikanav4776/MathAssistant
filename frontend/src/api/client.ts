@@ -6,6 +6,7 @@ import type {
   StepResult,
   UserProfile,
   UserSessionHistoryItem,
+  StarterProblemItem,
 } from "../types/api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -162,6 +163,21 @@ export async function fetchUserSessionHistory(): Promise<UserSessionHistoryItem[
     headers: buildHeaders(false),
   });
   return parseResponse<UserSessionHistoryItem[]>(response);
+}
+
+export async function fetchStarterProblems(options?: {
+  difficulty?: string;
+  topic?: string;
+}): Promise<StarterProblemItem[]> {
+  const params = new URLSearchParams();
+  if (options?.difficulty) params.set("difficulty", options.difficulty);
+  if (options?.topic) params.set("topic", options.topic);
+  const query = params.toString();
+  const response = await fetch(
+    `${API_BASE}/problems/starter${query ? `?${query}` : ""}`,
+    { headers: buildHeaders(false) }
+  );
+  return parseResponse<StarterProblemItem[]>(response);
 }
 
 export async function fetchSession(sessionId: string): Promise<SessionSummary> {

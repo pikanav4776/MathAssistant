@@ -85,6 +85,13 @@ export interface UserSessionHistoryItem {
   completed_at: string | null;
 }
 
+export interface StarterProblemItem {
+  id: string;
+  expression: string;
+  difficulty: string | null;
+  topic: string | null;
+}
+
 export interface LocalAttemptHistoryItem {
   step: string;
   stepOrder: number;

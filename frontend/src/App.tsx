@@ -16,6 +16,7 @@ export default function App() {
           onProblemInputChange={session.setProblemInput}
           onStartSession={session.handleStartSession}
           onTryExample={session.handleTryExample}
+          onSelectStarter={session.handleSelectStarter}
           onUseExpression={session.applyExpression}
           loading={session.problemLoading}
           resuming={session.resuming}

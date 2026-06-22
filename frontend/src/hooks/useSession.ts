@@ -273,6 +273,26 @@ export function useSession() {
     }
   }, [enterActiveSession]);
 
+  const handleSelectStarter = useCallback(
+    async (problemId: string) => {
+      setProblemError(null);
+      setProblemLoading(true);
+      try {
+        const problem = await fetchProblem(problemId);
+        setProblemInput(problem.expression);
+        const data = await startSessionWithProblemId(problemId);
+        setState((prev) => applyStartSessionData(prev, data, problem.topic ?? ""));
+        persistActiveSessionId(data.session_id);
+        enterActiveSession();
+      } catch (err) {
+        setProblemError(friendlyErrorMessage(err));
+      } finally {
+        setProblemLoading(false);
+      }
+    },
+    [enterActiveSession]
+  );
+
   const handleSubmitStep = useCallback(async () => {
     const step = stepInput.trim();
     if (!step) {
@@ -477,6 +497,7 @@ export function useSession() {
     allGreenDots,
     handleStartSession,
     handleTryExample,
+    handleSelectStarter,
     handleSubmitStep,
     handleGiveUp,
     handleTryAnother,

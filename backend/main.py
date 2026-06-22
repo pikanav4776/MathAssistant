@@ -61,6 +61,7 @@ from sympy.core.sympify import SympifyError
 from db.database import check_db_connection, get_db, init_db
 from auth.deps import get_optional_user, require_admin
 from auth.routes import router as auth_router
+from problem_routes import router as problem_router
 from session_access import assert_session_access
 from session_detail import step_index_for_session
 from session_routes import router as session_router
@@ -171,6 +172,7 @@ def _cors_origins() -> list[str]:
 
 app.include_router(auth_router)
 app.include_router(session_router)
+app.include_router(problem_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1120,6 +1122,34 @@ def create_problem(
         )
 
     try:
+        plan = build_solution_plan(data.expression)
+    except UnsupportedProblemError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unsupported_problem",
+                "message": str(exc),
+            },
+        ) from exc
+
+    validator = StepValidator()
+    equivalence = validator.validate(data.expected_final, plan.final_answer)
+    if not equivalence["is_equivalent"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "expected_final_mismatch",
+                "message": (
+                    "expected_final does not match the engine result for this expression."
+                ),
+                "engine_final": plan.final_answer,
+            },
+        )
+
+    resolved_topic = data.topic or plan.topic
+    resolved_difficulty = data.difficulty
+
+    try:
         existing = db.query(Problem).filter_by(id=data.id).first()
         if existing is not None:
             raise HTTPException(
@@ -1130,9 +1160,9 @@ def create_problem(
         row = Problem(
             id=data.id,
             expression=data.expression,
-            expected_final=data.expected_final,
-            difficulty=data.difficulty,
-            topic=data.topic,
+            expected_final=plan.final_answer,
+            difficulty=resolved_difficulty,
+            topic=resolved_topic,
         )
         db.add(row)
         db.commit()

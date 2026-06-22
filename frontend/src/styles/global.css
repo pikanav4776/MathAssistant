@@ -488,3 +488,80 @@ body {
 .session-history__badge--incomplete {
   color: var(--color-subtle);
 }
+
+.starter-problems {
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.starter-problems__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.starter-problems__hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--color-subtle);
+}
+
+.starter-problems__filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.starter-problems__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.starter-problems__filter select {
+  min-height: 44px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-bg);
+}
+
+.starter-problems__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.starter-problems__item {
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  cursor: pointer;
+}
+
+.starter-problems__item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.starter-problems__expression {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.starter-problems__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}

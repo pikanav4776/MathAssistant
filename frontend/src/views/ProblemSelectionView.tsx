@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { AuthPanel } from "../components/AuthPanel";
 import { CalculatorPanel } from "../components/CalculatorPanel";
 import { SessionHistoryPanel } from "../components/SessionHistoryPanel";
+import { StarterProblemsPanel } from "../components/StarterProblemsPanel";
 import type { useAuth } from "../hooks/useAuth";
 
 type AuthState = ReturnType<typeof useAuth>;
@@ -11,6 +12,7 @@ interface ProblemSelectionViewProps {
   onProblemInputChange: (value: string) => void;
   onStartSession: () => void;
   onTryExample: () => void;
+  onSelectStarter: (problemId: string) => void;
   onUseExpression: (expression: string) => void;
   loading: boolean;
   resuming?: boolean;
@@ -23,6 +25,7 @@ export function ProblemSelectionView({
   onProblemInputChange,
   onStartSession,
   onTryExample,
+  onSelectStarter,
   onUseExpression,
   loading,
   resuming = false,
@@ -88,13 +91,18 @@ export function ProblemSelectionView({
         disabled={buttonsDisabled}
       />
 
+      <StarterProblemsPanel
+        onSelectProblem={onSelectStarter}
+        disabled={buttonsDisabled}
+      />
+
       <button
         type="button"
         className="link-button"
         onClick={onTryExample}
         disabled={buttonsDisabled}
       >
-        Try an example from library
+        Try a random example
       </button>
 
       {resuming ? <p className="status-message">Restoring session...</p> : null}
