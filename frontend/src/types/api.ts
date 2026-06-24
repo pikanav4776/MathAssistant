@@ -92,6 +92,10 @@ export interface StarterProblemItem {
   topic: string | null;
 }
 
+export interface CalculatorAnswerResponse {
+  answer: string;
+}
+
 export interface LocalAttemptHistoryItem {
   step: string;
   stepOrder: number;

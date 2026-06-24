@@ -8,7 +8,17 @@ from sympy import Add, Mul, Pow, collect, expand, simplify, sympify
 from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
 
-SUPPORTED_TOPICS = ("distribution", "foil", "simplification", "linear_steps")
+SUPPORTED_TOPICS = (
+    "distribution",
+    "foil",
+    "simplification",
+    "linear_steps",
+    "function_evaluation",
+    "function_composition",
+    "inverse_functions",
+    "exponential_functions",
+    "logarithms",
+)
 
 _ALLOWED_CHARS = re.compile(r"^[A-Za-z0-9+\-*/^().\s]+$")
 _FUNC_TOKEN = re.compile(r"[A-Za-z]{2,}\s*\(")
@@ -89,6 +99,10 @@ def detect_topic(expression: str) -> str | None:
 
 def reject_if_unsupported(expression: str) -> None:
     """Raise UnsupportedProblemError when the expression cannot be co-solved in v0.3."""
+    from function_engine import try_build_function_plan
+
+    if try_build_function_plan(expression) is not None:
+        return
     _parse_expr(expression)
     if detect_topic(expression) is None:
         raise UnsupportedProblemError(
@@ -180,7 +194,13 @@ def _mul_display(expr: Mul) -> str:
 
 def canonical_step_display(expression: str) -> str:
     """Normalize an expression to its keyboard-style canonical step string."""
-    expr = _parse_expr(expression)
+    from function_engine import detect_function_topic
+
+    cleaned = expression.strip()
+    if detect_function_topic(cleaned) is not None:
+        return cleaned
+
+    expr = _parse_expr(cleaned)
     if isinstance(expr, Add):
         return _add_structure_display(expr)
     if isinstance(expr, Mul):
@@ -258,6 +278,12 @@ def _build_foil_steps(expr: Mul) -> list[str] | None:
 
 def build_solution_plan(expression: str) -> SolutionPlan:
     """Build a canonical solution plan (single- or multi-hop) for a supported problem."""
+    from function_engine import try_build_function_plan
+
+    function_plan = try_build_function_plan(expression)
+    if function_plan is not None:
+        return function_plan
+
     reject_if_unsupported(expression)
     expr = _parse_expr(expression)
     topic = detect_topic(expression)

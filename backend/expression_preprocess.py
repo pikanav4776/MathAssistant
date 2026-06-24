@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 
 _IMPLICIT_MUL = re.compile(r"(\d+)\*([A-Za-z])")
-_PROTECTED_NAMES = ("sqrt", "mod", "pi", "tau")
-_KNOWN_MATH_IDENTIFIERS = frozenset({"pi", "tau", "sqrt", "mod"})
+_PROTECTED_NAMES = ("sqrt", "mod", "pi", "tau", "log", "inv", "finv")
+_KNOWN_MATH_IDENTIFIERS = frozenset({"pi", "tau", "sqrt", "mod", "log", "inv", "finv"})
 _TEXT_ONLY = re.compile(r"^[A-Za-z\s]+$")
 
 

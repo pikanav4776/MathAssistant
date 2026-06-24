@@ -54,7 +54,7 @@ export function validateExpressionHeuristic(
   }
 
   if (contextHint === "problem" && V10_UNSUPPORTED_FOR_PROBLEMS.test(trimmed)) {
-    warnings.push(
+    errors.push(
       "Comparisons, sqrt, and mod are not supported for new problems in v1.0."
     );
   }

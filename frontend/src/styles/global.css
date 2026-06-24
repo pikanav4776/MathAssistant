@@ -36,6 +36,18 @@ body {
   margin-bottom: 1.5rem;
 }
 
+.view-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.view-header__account {
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+}
+
 .app-title {
   margin: 0;
   font-size: 1.75rem;

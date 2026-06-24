@@ -145,7 +145,7 @@ def test_build_solution_plan_single_hop_structure() -> None:
 
 def test_build_solution_plan_numeric_exponent() -> None:
     plan = build_solution_plan("2^3")
-    assert plan.topic == "simplification"
+    assert plan.topic == "exponential_functions"
     assert len(plan.steps) == 1
     assert plan.final_answer == "8"
     assert _sympy_equiv(plan.final_answer, "8")

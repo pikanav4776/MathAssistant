@@ -10,6 +10,11 @@ const TOPIC_OPTIONS = [
   { value: "double_expansion", label: "FOIL" },
   { value: "linear_steps", label: "Linear steps" },
   { value: "multihop", label: "Multihop" },
+  { value: "function_evaluation", label: "Function evaluation" },
+  { value: "function_composition", label: "Function composition" },
+  { value: "inverse_functions", label: "Inverse functions" },
+  { value: "exponential_functions", label: "Exponential functions" },
+  { value: "logarithms", label: "Logarithms" },
 ];
 
 const DIFFICULTY_OPTIONS = [

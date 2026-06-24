@@ -1,7 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { AuthPanel } from "../components/AuthPanel";
 import { CalculatorPanel } from "../components/CalculatorPanel";
-import { SessionHistoryPanel } from "../components/SessionHistoryPanel";
 import { StarterProblemsPanel } from "../components/StarterProblemsPanel";
 import type { useAuth } from "../hooks/useAuth";
 
@@ -18,6 +16,7 @@ interface ProblemSelectionViewProps {
   resuming?: boolean;
   error: string | null;
   auth: AuthState;
+  onOpenAccount: () => void;
 }
 
 export function ProblemSelectionView({
@@ -31,6 +30,7 @@ export function ProblemSelectionView({
   resuming = false,
   error,
   auth,
+  onOpenAccount,
 }: ProblemSelectionViewProps) {
   const buttonsDisabled = loading || resuming;
 
@@ -38,24 +38,23 @@ export function ProblemSelectionView({
     if (event.key === "Enter" && !buttonsDisabled) onStartSession();
   };
 
+  const accountLabel = auth.user
+    ? auth.user.display_name?.trim() || auth.user.email
+    : "Sign in";
+
   return (
     <section className="view">
       <header className="view-header">
-        <h1 className="app-title">MathAssistant</h1>
-        <p className="app-subtitle">Algebra Co-Solving (v1.0)</p>
+        <div className="view-header__row">
+          <div>
+            <h1 className="app-title">MathAssistant</h1>
+            <p className="app-subtitle">Algebra Co-Solving (v1.0)</p>
+          </div>
+          <button type="button" className="link-button view-header__account" onClick={onOpenAccount}>
+            {accountLabel}
+          </button>
+        </div>
       </header>
-
-      <AuthPanel
-        user={auth.user}
-        loading={auth.loading}
-        error={auth.error}
-        onLogin={auth.login}
-        onRegister={auth.register}
-        onLogout={auth.logout}
-        onClearError={auth.clearError}
-      />
-
-      {auth.user ? <SessionHistoryPanel userId={auth.user.id} /> : null}
 
       <div className="input-area">
         <label htmlFor="problem-input" className="input-label">
@@ -65,14 +64,17 @@ export function ProblemSelectionView({
           type="text"
           id="problem-input"
           className="step-input"
-          placeholder="e.g. 2(x+3)"
+          placeholder="e.g. 2x+5=9"
           autoComplete="off"
           value={problemInput}
           onChange={(event) => onProblemInputChange(event.target.value)}
           onKeyDown={handleKeyDown}
         />
         <p className="status-message">
-          Use keyboard algebra only: letters, digits, + - * / ^ and parentheses.
+          Linear and multi-step equations, quadratics, rational expressions, factoring,
+          exponent rules, and functions (evaluation, composition, inverses with inv(x) or
+          f^-1(x), exponentials, logarithms). Use letters, digits, + - * / ^, parentheses,
+          and =.
         </p>
       </div>
 

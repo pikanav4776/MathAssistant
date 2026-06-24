@@ -68,6 +68,7 @@ from session_detail import step_index_for_session
 from session_routes import router as session_router
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession, User, UserRole
 from expression_preprocess import preprocess_for_sympy, contains_text_like_input
+from calculator_answer import CalculatorAnswerError, compute_calculator_answer
 from step_engine import (
     UnsupportedProblemError,
     build_solution_plan,
@@ -249,7 +250,15 @@ class ProblemResponse(BaseModel):
     created_at: datetime
 
 
-class ProblemCreateRequest(BaseModel): # this is the request body for creating a problem
+class CalculatorAnswerRequest(BaseModel):
+    expression: str
+
+
+class CalculatorAnswerResponse(BaseModel):
+    answer: str
+
+
+class ProblemCreateRequest(BaseModel):
     id: str
     expression: str
     expected_final: str
@@ -1657,6 +1666,21 @@ def delete_session(
     db.delete(session_row)
     db.commit()
     return {"deleted": True}
+
+
+@app.post("/calculator/answer", response_model=CalculatorAnswerResponse)
+def calculator_answer(data: CalculatorAnswerRequest):
+    try:
+        answer = compute_calculator_answer(data.expression)
+    except CalculatorAnswerError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("calculator answer failed")
+        raise HTTPException(
+            status_code=400,
+            detail="Could not compute answer for this expression.",
+        )
+    return CalculatorAnswerResponse(answer=answer)
 
 
 @app.get("/health")

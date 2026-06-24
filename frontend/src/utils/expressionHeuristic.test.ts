@@ -20,14 +20,20 @@ describe("validateExpressionHeuristic", () => {
     expect(result.warnings).toContain("Expression ends with an operator.");
   });
 
-  it("warns about v1.0 unsupported syntax in problem context", () => {
+  it("rejects v1.0 unsupported syntax in problem context", () => {
     const result = validateExpressionHeuristic("sqrt(x)", "problem");
-    expect(result.warnings.some((w) => w.includes("v1.0"))).toBe(true);
+    expect(result.isValid).toBe(false);
+    expect(result.errors.some((e) => e.includes("v1.0"))).toBe(true);
   });
 
-  it("does not warn about comparisons in step context", () => {
+  it("allows equations with a single equals sign in problem context", () => {
+    const result = validateExpressionHeuristic("2x+5=9", "problem");
+    expect(result.isValid).toBe(true);
+  });
+
+  it("does not reject comparisons in step context", () => {
     const result = validateExpressionHeuristic("x <= 5", "step");
-    expect(result.warnings.some((w) => w.includes("v1.0"))).toBe(false);
+    expect(result.errors.some((e) => e.includes("v1.0"))).toBe(false);
   });
 
   it("rejects word-like text input", () => {

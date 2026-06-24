@@ -1,4 +1,4 @@
-const KNOWN_MATH_IDENTIFIERS = new Set(["pi", "tau", "sqrt", "mod"]);
+const KNOWN_MATH_IDENTIFIERS = new Set(["pi", "tau", "sqrt", "mod", "log", "inv", "finv"]);
 
 const TEXT_ONLY_PATTERN = /^[a-zA-Z\s]+$/;
 

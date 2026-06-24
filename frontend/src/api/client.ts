@@ -7,6 +7,7 @@ import type {
   UserProfile,
   UserSessionHistoryItem,
   StarterProblemItem,
+  CalculatorAnswerResponse,
 } from "../types/api";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -181,6 +182,15 @@ export async function fetchStarterProblems(options?: {
     { headers: buildHeaders(false) }
   );
   return parseResponse<StarterProblemItem[]>(response);
+}
+
+export async function fetchCalculatorAnswer(expression: string): Promise<CalculatorAnswerResponse> {
+  const response = await fetch(`${API_BASE}/calculator/answer`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ expression }),
+  });
+  return parseResponse<CalculatorAnswerResponse>(response);
 }
 
 export async function fetchSession(sessionId: string): Promise<SessionSummary> {

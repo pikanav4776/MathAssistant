@@ -246,6 +246,10 @@ export function useSession() {
     setProblemLoading(true);
     try {
       const data = await startSessionWithExpression(expression);
+      if (!data.session_id?.trim()) {
+        setProblemError(data.message || "Could not start a session. Please try again.");
+        return;
+      }
       setState((prev) => applyStartSessionData(prev, data));
       persistActiveSessionId(data.session_id);
       enterActiveSession();
@@ -305,7 +309,17 @@ export function useSession() {
     setGiveUpDisabled(true);
 
     const current = stateRef.current;
-    if (!current.sessionId) return;
+    if (!current.sessionId?.trim()) {
+      setShowFeedback(true);
+      setFeedback({
+        isEquivalent: false,
+        isInputError: false,
+        hint: "No active session. Go back and start a new problem.",
+        showDeeperHint: false,
+        requestFailed: true,
+      });
+      return;
+    }
 
     let sessionComplete = current.sessionComplete;
 

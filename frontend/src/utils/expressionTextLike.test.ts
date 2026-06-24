@@ -17,6 +17,7 @@ describe("containsTextLikeInput", () => {
     expect(containsTextLikeInput("sqrt(x)")).toBe(false);
     expect(containsTextLikeInput("pi*r^2")).toBe(false);
     expect(containsTextLikeInput("E+1")).toBe(false);
+    expect(containsTextLikeInput("f(x)=2x+1|inv(x)")).toBe(false);
   });
 
   it("flags long alphabetic runs embedded in expressions", () => {

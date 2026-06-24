@@ -74,7 +74,7 @@ export const CALCULATOR_ROW_Z: ExpressionToken[] = [
 export const CALCULATOR_ROW_OPS: ExpressionToken[] = [
   operator("+", "+"),
   operator("−", "-", "minus"),
-  operator("×", "*", "multiply"),
+  operator("*", "*", "multiply"),
   operator("÷", "/", "divide"),
   operator("^", "^", "exponent"),
   fn("√", "sqrt(", "square root"),
@@ -98,3 +98,27 @@ export const CALCULATOR_KEYPAD_ROWS: ExpressionToken[][] = [
   CALCULATOR_ROW_OPS,
   CALCULATOR_ROW_DIGITS,
 ];
+
+const PROBLEM_ROW_A = CALCULATOR_ROW_A.filter((token) => token.category !== "function");
+const PROBLEM_ROW_Z = CALCULATOR_ROW_Z.filter((token) => token.category !== "comparison");
+const PROBLEM_ROW_OPS = [
+  ...CALCULATOR_ROW_OPS.filter(
+    (token) => token.category !== "function" && token.category !== "comparison"
+  ),
+  fn("inv", "inv(", "inverse function"),
+  operator("=", "="),
+];
+
+export const PROBLEM_KEYPAD_ROWS: ExpressionToken[][] = [
+  CALCULATOR_ROW_Q,
+  PROBLEM_ROW_A,
+  PROBLEM_ROW_Z,
+  PROBLEM_ROW_OPS,
+  CALCULATOR_ROW_DIGITS,
+];
+
+export function getKeypadRowsForContext(
+  contextHint: "problem" | "step" = "problem"
+): ExpressionToken[][] {
+  return contextHint === "problem" ? PROBLEM_KEYPAD_ROWS : CALCULATOR_KEYPAD_ROWS;
+}

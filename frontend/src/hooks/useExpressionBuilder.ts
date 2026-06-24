@@ -16,11 +16,19 @@ export function useExpressionBuilder(contextHint?: ExpressionContextHint) {
 
   const backspace = useCallback(() => {
     setTokenHistory((prev) => {
-      if (prev.length === 0) return prev;
-      const lastToken = prev[prev.length - 1];
-      setExpression((current) => current.slice(0, current.length - lastToken.length));
-      return prev.slice(0, -1);
+      if (prev.length > 0) {
+        const lastToken = prev[prev.length - 1];
+        setExpression((current) => current.slice(0, current.length - lastToken.length));
+        return prev.slice(0, -1);
+      }
+      setExpression((current) => current.slice(0, -1));
+      return prev;
     });
+  }, []);
+
+  const setExpressionDirect = useCallback((value: string) => {
+    setExpression(value);
+    setTokenHistory([]);
   }, []);
 
   const clear = useCallback(() => {
@@ -38,6 +46,7 @@ export function useExpressionBuilder(contextHint?: ExpressionContextHint) {
     appendToken,
     backspace,
     clear,
+    setExpression: setExpressionDirect,
     heuristic,
     canUseExpression: expression.trim().length > 0,
   };

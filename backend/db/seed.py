@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from db.models import Problem, ProblemWrongAnswer, SolutionPath, SolutionStep
+from function_datasets import FUNCTION_TESTING_DATASET, FUNCTION_TRAINING_DATASET
 from evaluation_dataset import EVALUATION_DATASET
 from step_engine import build_solution_plan
 
@@ -17,8 +18,18 @@ PREDEFINED_PROBLEMS: list[dict[str, str]] = [
         "difficulty": problem["difficulty"],
         "topic": problem["topic"],
     }
-    for problem in EVALUATION_DATASET
+    for problem in (
+        EVALUATION_DATASET
+        + FUNCTION_TRAINING_DATASET
+        + FUNCTION_TESTING_DATASET
+    )
 ]
+
+ALL_SEEDED_PROBLEMS = (
+    EVALUATION_DATASET
+    + FUNCTION_TRAINING_DATASET
+    + FUNCTION_TESTING_DATASET
+)
 
 
 def seed_problems(db: Session) -> None:
@@ -34,7 +45,7 @@ def seed_problems(db: Session) -> None:
 
 def seed_wrong_answers(db: Session) -> None:
     """Insert canonical wrong answers; safe to call on every startup (idempotent)."""
-    for problem in EVALUATION_DATASET:
+    for problem in ALL_SEEDED_PROBLEMS:
         for wrong in problem["wrong_answers"]:
             stmt = (
                 insert(ProblemWrongAnswer)
@@ -51,7 +62,7 @@ def seed_wrong_answers(db: Session) -> None:
 
 def seed_solution_paths(db: Session) -> None:
     """Insert default solution path per problem; idempotent."""
-    for problem in EVALUATION_DATASET:
+    for problem in ALL_SEEDED_PROBLEMS:
         problem_id = problem["problem_id"]
         existing = (
             db.query(SolutionPath)
@@ -71,9 +82,8 @@ def seed_solution_paths(db: Session) -> None:
 
 def seed_solution_steps(db: Session) -> None:
     """Insert canonical solution steps from step_engine for each default path; idempotent."""
-    for problem in EVALUATION_DATASET:
+    for problem in ALL_SEEDED_PROBLEMS:
         problem_id = problem["problem_id"]
-        plan = build_solution_plan(problem["expression"])
         path = (
             db.query(SolutionPath)
             .filter_by(problem_id=problem_id, is_primary=True)
@@ -81,6 +91,17 @@ def seed_solution_steps(db: Session) -> None:
         )
         if path is None:
             continue
+
+        has_steps = (
+            db.query(SolutionStep)
+            .filter_by(path_id=path.sol_path_id)
+            .first()
+            is not None
+        )
+        if has_steps:
+            continue
+
+        plan = build_solution_plan(problem["expression"])
         for order, step_expr in enumerate(plan.steps, start=1):
             step = (
                 db.query(SolutionStep)

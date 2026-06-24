@@ -1,16 +1,31 @@
+import { useEffect, useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { useSession } from "./hooks/useSession";
+import { AccountView } from "./views/AccountView";
 import { ActiveSessionView } from "./views/ActiveSessionView";
 import { ProblemSelectionView } from "./views/ProblemSelectionView";
 import { SessionCompleteView } from "./views/SessionCompleteView";
 
+type HomeScreen = "calculator" | "account";
+
 export default function App() {
   const auth = useAuth();
   const session = useSession();
+  const [homeScreen, setHomeScreen] = useState<HomeScreen>("calculator");
+
+  useEffect(() => {
+    if (session.view !== "selection") {
+      setHomeScreen("calculator");
+    }
+  }, [session.view]);
 
   return (
     <main className="app">
-      {session.view === "selection" ? (
+      {session.view === "selection" && homeScreen === "account" ? (
+        <AccountView auth={auth} onBack={() => setHomeScreen("calculator")} />
+      ) : null}
+
+      {session.view === "selection" && homeScreen === "calculator" ? (
         <ProblemSelectionView
           problemInput={session.problemInput}
           onProblemInputChange={session.setProblemInput}
@@ -22,6 +37,7 @@ export default function App() {
           resuming={session.resuming}
           error={session.problemError}
           auth={auth}
+          onOpenAccount={() => setHomeScreen("account")}
         />
       ) : null}
 
