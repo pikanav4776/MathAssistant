@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from sympy import E, Eq, Mod, pi, solve, sqrt, sympify
+from sympy import E, Eq, Mod, cos, pi, sin, solve, sqrt, sympify, tan
 from sympy.core.sympify import SympifyError
 
 from expression_preprocess import contains_text_like_input, display_expression, preprocess_for_sympy
@@ -17,6 +17,9 @@ _SYMPY_LOCALS = {
     "tau": 2 * pi,
     "mod": Mod,
     "sqrt": sqrt,
+    "sin": sin,
+    "cos": cos,
+    "tan": tan,
 }
 
 _COMPARISON_OPS = ("<=", ">=", "==", "!=", "<", ">")

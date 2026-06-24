@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 
 _IMPLICIT_MUL = re.compile(r"(\d+)\*([A-Za-z])")
-_PROTECTED_NAMES = ("sqrt", "mod", "pi", "tau", "log", "inv", "finv")
-_KNOWN_MATH_IDENTIFIERS = frozenset({"pi", "tau", "sqrt", "mod", "log", "inv", "finv"})
+_PROTECTED_NAMES = ("sqrt", "mod", "pi", "tau", "log", "inv", "finv", "sin", "cos", "tan")
+_KNOWN_MATH_IDENTIFIERS = frozenset(
+    {"pi", "tau", "sqrt", "mod", "log", "inv", "finv", "sin", "cos", "tan"}
+)
 _TEXT_ONLY = re.compile(r"^[A-Za-z\s]+$")
 
 
@@ -57,6 +59,9 @@ def preprocess_for_sympy(expression: str) -> str:
     - Inserts implicit multiplication: ``2x``, ``2(x+3)``, ``x(y+1)``, ``)(``.
     """
     compact = re.sub(r"\s+", "", expression.strip())
+    compact = re.sub(r"sin\^2\(([^)]+)\)", r"(sin(\1))**2", compact, flags=re.IGNORECASE)
+    compact = re.sub(r"cos\^2\(([^)]+)\)", r"(cos(\1))**2", compact, flags=re.IGNORECASE)
+    compact = re.sub(r"tan\^2\(([^)]+)\)", r"(tan(\1))**2", compact, flags=re.IGNORECASE)
     compact, shields = _shield_protected_names(compact)
 
     processed: list[str] = []
@@ -95,6 +100,9 @@ def display_expression(expr_str: str) -> str:
     """Prefer ``^`` and compact keyboard-style algebra in API-facing strings."""
     cleaned = expr_str.replace("**", "^")
     cleaned = re.sub(r"\s+", "", cleaned)
+    cleaned = re.sub(r"sin\(([^)]+)\)\^2", r"sin^2(\1)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"cos\(([^)]+)\)\^2", r"cos^2(\1)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"tan\(([^)]+)\)\^2", r"tan^2(\1)", cleaned, flags=re.IGNORECASE)
     cleaned = _IMPLICIT_MUL.sub(r"\1\2", cleaned)
     cleaned = cleaned.replace("+-", "-")
     cleaned = cleaned.replace("-+", "-")

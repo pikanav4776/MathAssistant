@@ -18,6 +18,8 @@ SUPPORTED_TOPICS = (
     "inverse_functions",
     "exponential_functions",
     "logarithms",
+    "core_trig",
+    "basic_trig_identities",
 )
 
 _ALLOWED_CHARS = re.compile(r"^[A-Za-z0-9+\-*/^().\s]+$")
@@ -100,7 +102,10 @@ def detect_topic(expression: str) -> str | None:
 def reject_if_unsupported(expression: str) -> None:
     """Raise UnsupportedProblemError when the expression cannot be co-solved in v0.3."""
     from function_engine import try_build_function_plan
+    from trig_engine import try_build_trig_plan
 
+    if try_build_trig_plan(expression) is not None:
+        return
     if try_build_function_plan(expression) is not None:
         return
     _parse_expr(expression)
@@ -195,8 +200,13 @@ def _mul_display(expr: Mul) -> str:
 def canonical_step_display(expression: str) -> str:
     """Normalize an expression to its keyboard-style canonical step string."""
     from function_engine import detect_function_topic
+    from trig_engine import detect_trig_topic
 
     cleaned = expression.strip()
+    if detect_trig_topic(cleaned) is not None:
+        return display_expression(cleaned)
+    if "sqrt(" in cleaned.lower():
+        return display_expression(cleaned)
     if detect_function_topic(cleaned) is not None:
         return cleaned
 
@@ -279,6 +289,11 @@ def _build_foil_steps(expr: Mul) -> list[str] | None:
 def build_solution_plan(expression: str) -> SolutionPlan:
     """Build a canonical solution plan (single- or multi-hop) for a supported problem."""
     from function_engine import try_build_function_plan
+    from trig_engine import try_build_trig_plan
+
+    trig_plan = try_build_trig_plan(expression)
+    if trig_plan is not None:
+        return trig_plan
 
     function_plan = try_build_function_plan(expression)
     if function_plan is not None:

@@ -63,9 +63,17 @@ def detect_function_topic(expression: str) -> str | None:
 
     if re.search(r"log\([^,]+,\s*[^)]+\)", cleaned, flags=re.IGNORECASE):
         return "logarithms"
-    if _EXPRESSION_PATTERN.search(cleaned):
+    if _is_exponential_expression(cleaned):
         return "exponential_functions"
     return None
+
+
+def _is_exponential_expression(expression: str) -> bool:
+    """Exponent-law problems only; lone numeric powers like ``2^3`` are simplification."""
+    compact = re.sub(r"\s+", "", expression)
+    if re.fullmatch(r"\d+\^\d+", compact):
+        return False
+    return _EXPRESSION_PATTERN.search(compact) is not None
 
 
 def try_build_function_plan(expression: str) -> SolutionPlan | None:

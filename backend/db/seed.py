@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from db.models import Problem, ProblemWrongAnswer, SolutionPath, SolutionStep
 from function_datasets import FUNCTION_TESTING_DATASET, FUNCTION_TRAINING_DATASET
+from trig_datasets import TRIG_TESTING_DATASET, TRIG_TRAINING_DATASET
 from evaluation_dataset import EVALUATION_DATASET
 from step_engine import build_solution_plan
 
@@ -22,6 +23,8 @@ PREDEFINED_PROBLEMS: list[dict[str, str]] = [
         EVALUATION_DATASET
         + FUNCTION_TRAINING_DATASET
         + FUNCTION_TESTING_DATASET
+        + TRIG_TRAINING_DATASET
+        + TRIG_TESTING_DATASET
     )
 ]
 
@@ -29,6 +32,8 @@ ALL_SEEDED_PROBLEMS = (
     EVALUATION_DATASET
     + FUNCTION_TRAINING_DATASET
     + FUNCTION_TESTING_DATASET
+    + TRIG_TRAINING_DATASET
+    + TRIG_TESTING_DATASET
 )
 
 

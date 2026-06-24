@@ -99,7 +99,13 @@ export const CALCULATOR_KEYPAD_ROWS: ExpressionToken[][] = [
   CALCULATOR_ROW_DIGITS,
 ];
 
-const PROBLEM_ROW_A = CALCULATOR_ROW_A.filter((token) => token.category !== "function");
+const PROBLEM_ROW_A: ExpressionToken[] = [
+  fn("sin", "sin(", "sine"),
+  fn("cos", "cos(", "cosine"),
+  fn("tan", "tan(", "tangent"),
+  ..."asdfghjkl".split("").map(variable),
+  digit("."),
+];
 const PROBLEM_ROW_Z = CALCULATOR_ROW_Z.filter((token) => token.category !== "comparison");
 const PROBLEM_ROW_OPS = [
   ...CALCULATOR_ROW_OPS.filter(

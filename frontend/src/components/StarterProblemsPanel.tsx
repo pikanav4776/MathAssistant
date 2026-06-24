@@ -15,6 +15,8 @@ const TOPIC_OPTIONS = [
   { value: "inverse_functions", label: "Inverse functions" },
   { value: "exponential_functions", label: "Exponential functions" },
   { value: "logarithms", label: "Logarithms" },
+  { value: "core_trig", label: "Core trig" },
+  { value: "basic_trig_identities", label: "Trig identities" },
 ];
 
 const DIFFICULTY_OPTIONS = [

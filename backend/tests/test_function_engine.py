@@ -24,6 +24,10 @@ def test_detect_function_topic(expression: str, topic: str) -> None:
     assert detect_function_topic(expression) == topic
 
 
+def test_lone_numeric_power_is_not_exponential_topic() -> None:
+    assert detect_function_topic("2^3") is None
+
+
 @pytest.mark.parametrize("problem", FUNCTION_TRAINING_DATASET, ids=lambda p: p["problem_id"])
 def test_training_dataset_builds_plan(problem: dict) -> None:
     plan = try_build_function_plan(problem["expression"])

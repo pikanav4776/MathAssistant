@@ -145,7 +145,7 @@ def test_build_solution_plan_single_hop_structure() -> None:
 
 def test_build_solution_plan_numeric_exponent() -> None:
     plan = build_solution_plan("2^3")
-    assert plan.topic == "exponential_functions"
+    assert plan.topic == "simplification"
     assert len(plan.steps) == 1
     assert plan.final_answer == "8"
     assert _sympy_equiv(plan.final_answer, "8")
@@ -206,9 +206,7 @@ def test_step_validator_parser_normalized_exponent_forms_match(
         ("x<5", "inequalities"),
         ("x>=3", "inequalities"),
         ("sqrt(x)", "Function"),
-        ("sin(x)", "Function"),
         ("log(x)", "Function"),
-        ("cos(2x)", "Function"),
         ("", "empty"),
         ("2@@3", "keyboard-typable"),
         ("2@3", "keyboard-typable"),
@@ -222,9 +220,7 @@ def test_step_validator_parser_normalized_exponent_forms_match(
         "ineq-lt",
         "ineq-gte",
         "func-sqrt",
-        "func-sin",
         "func-log",
-        "func-cos",
         "empty",
         "garbage-double-at",
         "garbage-at",
@@ -242,6 +238,14 @@ def test_build_solution_plan_rejects_unsupported(expression: str, reason_fragmen
 
 def test_reject_if_unsupported_accepts_supported_distribution() -> None:
     reject_if_unsupported("2(x+3)")
+
+
+def test_reject_if_unsupported_accepts_core_trig() -> None:
+    reject_if_unsupported("sin(pi/2)")
+
+
+def test_reject_if_unsupported_accepts_trig_identity() -> None:
+    reject_if_unsupported("sin^2(x)+cos^2(x)")
 
 
 def test_reject_if_unsupported_rejects_equation() -> None:

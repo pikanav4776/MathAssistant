@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session as OrmSession
 from pydantic import BaseModel
 from sympy import (
     Add, E, Mod, Mul, Pow,
-    expand, collect, simplify, sympify, sqrt,
+    cos, expand, collect, simplify, sin, sympify, sqrt, tan,
     zoo, nan, oo, pi as Pi,
 )
 from sympy.core.expr import Expr
@@ -120,6 +120,9 @@ _SYMPY_LOCALS = {
     "tau": 2 * Pi,
     "mod": Mod,
     "sqrt": sqrt,
+    "sin": sin,
+    "cos": cos,
+    "tan": tan,
 }
 
 

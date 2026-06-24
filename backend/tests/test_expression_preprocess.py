@@ -72,16 +72,21 @@ def test_display_expression_compact_keyboard_form() -> None:
 
 
 @pytest.mark.parametrize(
-    "expression,expected_final",
+    "expression,plan_topic,detect_topic_expected,expected_final",
     [
-        ("2^3", "8"),
-        ("x^2", "x^2"),
-        ("(x+1)^2", "x^2+2x+1"),
+        ("2^3", "simplification", "simplification", "8"),
+        ("x^2", "simplification", "simplification", "x^2"),
+        ("(x+1)^2", "simplification", "simplification", "x^2+2x+1"),
     ],
     ids=["numeric-power", "symbolic-power", "binomial-square"],
 )
-def test_exponent_expressions_supported(expression: str, expected_final: str) -> None:
-    assert detect_topic(expression) == "simplification"
+def test_exponent_expressions_supported(
+    expression: str,
+    plan_topic: str,
+    detect_topic_expected: str,
+    expected_final: str,
+) -> None:
+    assert detect_topic(expression) == detect_topic_expected
     plan = build_solution_plan(expression)
-    assert plan.topic == "simplification"
+    assert plan.topic == plan_topic
     assert _sympy_equiv(plan.final_answer, expected_final)
