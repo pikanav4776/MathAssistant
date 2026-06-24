@@ -206,10 +206,105 @@ BASIC_TRIG_IDENTITIES_TESTING = [
     ]),
 ]
 
-TRIG_TRAINING_DATASET: list[dict] = CORE_TRIG_TRAINING + BASIC_TRIG_IDENTITIES_TRAINING
-TRIG_TESTING_DATASET: list[dict] = CORE_TRIG_TESTING + BASIC_TRIG_IDENTITIES_TESTING
+TRIG_EQUATIONS_TRAINING = [
+    entry("teq_tr_01", "sin(x)=1/2", "easy", "trig_equations", [
+        wrong("x=pi/6", "arithmetic_error", "Gave only one angle on the unit circle."),
+        wrong("x=pi/3", "arithmetic_error", "Confused sine with cosine values."),
+    ]),
+    entry("teq_tr_02", "cos(x)=sqrt(3)/2", "easy", "trig_equations", [
+        wrong("x=pi/3", "arithmetic_error", "Returned a sine value instead of cosine."),
+        wrong("x=pi/6", "arithmetic_error", "Listed only one solution."),
+    ]),
+    entry("teq_tr_03", "sin(x)=1", "easy", "trig_equations", [
+        wrong("x=pi/4", "arithmetic_error", "Confused sine equal to 1 with tangent equal to 1."),
+        wrong("x=0", "arithmetic_error", "Returned cosine instead of sine."),
+    ]),
+    entry("teq_tr_04", "2*sin(x)=1", "medium", "trig_equations", [
+        wrong("x=pi/6,x=5pi/6", "arithmetic_error", "Solved before isolating sine."),
+        wrong("sin(x)=2", "arithmetic_error", "Divided by 2 on the wrong side."),
+    ]),
+    entry("teq_tr_05", "cos(x)=-1/2", "medium", "trig_equations", [
+        wrong("x=pi/3,x=5pi/3", "sign_error", "Ignored the negative cosine value."),
+        wrong("x=2pi/3", "arithmetic_error", "Returned only one quadrant solution."),
+    ]),
+    entry("teq_tr_06", "tan(x)=1", "medium", "trig_equations", [
+        wrong("x=pi/6", "arithmetic_error", "Confused tangent with sine at pi/6."),
+        wrong("x=pi/2", "arithmetic_error", "Used an angle where tangent is undefined."),
+    ]),
+    entry("teq_tr_07", "2*sin(x)-1=0", "hard", "trig_equations", [
+        wrong("x=pi/6", "arithmetic_error", "Moved the constant but solved too early."),
+        wrong("sin(x)=2", "arithmetic_error", "Added 1 instead of isolating sine."),
+    ]),
+    entry("teq_tr_08", "sqrt(3)*cos(x)=3/2", "hard", "trig_equations", [
+        wrong("x=pi/3,x=5pi/3", "arithmetic_error", "Skipped dividing by sqrt(3)."),
+        wrong("cos(x)=3/2", "arithmetic_error", "Divided on the wrong side."),
+    ]),
+    entry("teq_tr_09", "sin(x)-cos(x)=0", "hard", "trig_equations", [
+        wrong("x=pi/6", "arithmetic_error", "Set sine and cosine equal without solving."),
+        wrong("x=pi/2", "arithmetic_error", "Used an angle where cosine is zero."),
+    ]),
+    entry("teq_tr_10", "2*sin(x)+sqrt(3)=0", "hard", "trig_equations", [
+        wrong("x=pi/3", "sign_error", "Ignored the negative value after isolating sine."),
+        wrong("sin(x)=sqrt(3)/2", "sign_error", "Moved sqrt(3) with the wrong sign."),
+    ]),
+]
+
+TRIG_EQUATIONS_TESTING = [
+    entry("teq_ts_01", "sin(x)=sqrt(3)/2", "easy", "trig_equations", [
+        wrong("x=pi/6,x=5pi/6", "arithmetic_error", "Used sine of pi/6 instead of pi/3."),
+        wrong("x=pi/4", "arithmetic_error", "Confused with sine equal to sqrt(2)/2."),
+    ]),
+    entry("teq_ts_02", "cos(x)=1", "easy", "trig_equations", [
+        wrong("x=0", "arithmetic_error", "Returned only one full-turn solution."),
+        wrong("x=pi/2", "arithmetic_error", "Confused cosine equal to 1 with sine."),
+    ]),
+    entry("teq_ts_03", "tan(x)=sqrt(3)/3", "easy", "trig_equations", [
+        wrong("x=pi/3", "arithmetic_error", "Confused tangent of pi/6 with pi/3."),
+        wrong("x=pi/4", "arithmetic_error", "Used tangent equal to 1."),
+    ]),
+    entry("teq_ts_04", "3*sin(x)=3/2", "medium", "trig_equations", [
+        wrong("x=pi/6,x=5pi/6", "arithmetic_error", "Solved before dividing by 3."),
+        wrong("sin(x)=3/2", "arithmetic_error", "Multiplied instead of dividing."),
+    ]),
+    entry("teq_ts_05", "2*cos(x)-1=0", "medium", "trig_equations", [
+        wrong("x=pi/3", "arithmetic_error", "Returned only one cosine solution."),
+        wrong("cos(x)=2", "arithmetic_error", "Added 1 instead of isolating cosine."),
+    ]),
+    entry("teq_ts_06", "sqrt(2)*cos(x)=1", "medium", "trig_equations", [
+        wrong("x=pi/4", "arithmetic_error", "Listed only one solution."),
+        wrong("cos(x)=sqrt(2)", "arithmetic_error", "Divided incorrectly by sqrt(2)."),
+    ]),
+    entry("teq_ts_07", "sqrt(2)*sin(x)=1", "hard", "trig_equations", [
+        wrong("x=pi/4", "arithmetic_error", "Returned only one sine solution."),
+        wrong("sin(x)=sqrt(2)", "arithmetic_error", "Skipped isolating sine."),
+    ]),
+    entry("teq_ts_08", "4*sin(x)=2", "hard", "trig_equations", [
+        wrong("x=pi/3,x=2pi/3", "arithmetic_error", "Used the wrong reference angle."),
+        wrong("sin(x)=4", "arithmetic_error", "Divided by 4 on the wrong side."),
+    ]),
+    entry("teq_ts_09", "sin(x)=1/2^1", "hard", "trig_equations", [
+        wrong("x=pi/3", "arithmetic_error", "Misread the exponent on the right-hand side."),
+        wrong("sin(x)=2", "arithmetic_error", "Treated 2^1 as multiplication by 2."),
+    ]),
+    entry("teq_ts_10", "2*sin^2(x)=1/2", "hard", "trig_equations", [
+        wrong("x=pi/6,x=5pi/6", "arithmetic_error", "Forgot negative reference angles."),
+        wrong("sin(x)=1/2", "arithmetic_error", "Stopped after taking the square root."),
+    ]),
+]
+
+TRIG_TRAINING_DATASET: list[dict] = (
+    CORE_TRIG_TRAINING
+    + BASIC_TRIG_IDENTITIES_TRAINING
+    + TRIG_EQUATIONS_TRAINING
+)
+TRIG_TESTING_DATASET: list[dict] = (
+    CORE_TRIG_TESTING
+    + BASIC_TRIG_IDENTITIES_TESTING
+    + TRIG_EQUATIONS_TESTING
+)
 
 TRIG_TOPICS = (
     "core_trig",
     "basic_trig_identities",
+    "trig_equations",
 )

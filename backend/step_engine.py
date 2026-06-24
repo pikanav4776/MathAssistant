@@ -20,6 +20,7 @@ SUPPORTED_TOPICS = (
     "logarithms",
     "core_trig",
     "basic_trig_identities",
+    "trig_equations",
 )
 
 _ALLOWED_CHARS = re.compile(r"^[A-Za-z0-9+\-*/^().\s]+$")
@@ -204,6 +205,11 @@ def canonical_step_display(expression: str) -> str:
 
     cleaned = expression.strip()
     if detect_trig_topic(cleaned) is not None:
+        return display_expression(cleaned)
+    compact = re.sub(r"\s+", "", cleaned)
+    if "," in compact and all("=" in part for part in compact.split(",")):
+        return display_expression(cleaned)
+    if re.match(r"^[A-Za-z]=.+", compact):
         return display_expression(cleaned)
     if "sqrt(" in cleaned.lower():
         return display_expression(cleaned)

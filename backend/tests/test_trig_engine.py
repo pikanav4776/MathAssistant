@@ -17,6 +17,8 @@ from trig_engine import detect_trig_topic, try_build_trig_plan
         ("sin(pi/6)+cos(pi/3)", "core_trig"),
         ("sin^2(x)+cos^2(x)", "basic_trig_identities"),
         ("2*sin^2(x)+2*cos^2(x)", "basic_trig_identities"),
+        ("sin(x)=1/2", "trig_equations"),
+        ("2*sin(x)=1", "trig_equations"),
     ],
 )
 def test_detect_trig_topic(expression: str, topic: str) -> None:
@@ -48,3 +50,16 @@ def test_identity_plan() -> None:
     assert plan.topic == "basic_trig_identities"
     assert plan.final_answer == "1"
     assert plan.steps[0] == "sin^2(x)+cos^2(x)"
+
+
+def test_trig_equation_plan() -> None:
+    plan = try_build_trig_plan("sin(x)=1/2")
+    assert plan.topic == "trig_equations"
+    assert plan.final_answer == "x=pi/6,x=5pi/6"
+    assert plan.steps[0] == "sin(x)=1/2"
+
+
+def test_trig_equation_isolation_steps() -> None:
+    plan = try_build_trig_plan("2*sin(x)=1")
+    assert "sin(x)=1/2" in plan.steps
+    assert plan.final_answer == "x=pi/6,x=5pi/6"

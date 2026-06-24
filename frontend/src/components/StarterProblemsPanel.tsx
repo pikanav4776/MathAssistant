@@ -17,6 +17,7 @@ const TOPIC_OPTIONS = [
   { value: "logarithms", label: "Logarithms" },
   { value: "core_trig", label: "Core trig" },
   { value: "basic_trig_identities", label: "Trig identities" },
+  { value: "trig_equations", label: "Trig equations" },
 ];
 
 const DIFFICULTY_OPTIONS = [

@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from sympy import cos, expand, factor, pi, preorder_traversal, simplify, sin, sympify, tan
+from sympy import cos, expand, factor, pi, preorder_traversal, simplify, sin, solve, sqrt, sympify, tan
+from sympy import Eq, S, Add, Mul, Symbol
 from sympy.core.expr import Expr
 from sympy.core.sympify import SympifyError
 
@@ -15,6 +16,7 @@ from step_engine import SolutionPlan, UnsupportedProblemError
 TRIG_TOPICS = (
     "core_trig",
     "basic_trig_identities",
+    "trig_equations",
 )
 
 _SYM_LOCALS: dict[str, Any] = {
@@ -22,6 +24,7 @@ _SYM_LOCALS: dict[str, Any] = {
     "cos": cos,
     "tan": tan,
     "pi": pi,
+    "sqrt": sqrt,
 }
 
 _TRIG_PATTERN = re.compile(
@@ -46,6 +49,8 @@ def detect_trig_topic(expression: str) -> str | None:
     cleaned = expression.strip()
     if not cleaned or not _TRIG_PATTERN.search(cleaned):
         return None
+    if _is_trig_equation(cleaned):
+        return "trig_equations"
     if _is_identity_expression(cleaned):
         return "basic_trig_identities"
     return "core_trig"
@@ -59,11 +64,21 @@ def try_build_trig_plan(expression: str) -> SolutionPlan | None:
     builders = {
         "core_trig": _build_core_trig_plan,
         "basic_trig_identities": _build_identity_plan,
+        "trig_equations": _build_trig_equation_plan,
     }
     steps, final_answer = builders[topic](expression)
     if not steps:
         raise UnsupportedProblemError("Could not build steps for this trigonometry problem.")
     return SolutionPlan(topic=topic, subject="trigonometry", steps=steps, final_answer=final_answer)
+
+
+def _is_trig_equation(expression: str) -> bool:
+    compact = re.sub(r"\s+", "", expression)
+    if any(op in compact for op in ("<=", ">=", "==", "!=", "<", ">")):
+        return False
+    if compact.count("=") != 1:
+        return False
+    return True
 
 
 def _is_identity_expression(expression: str) -> bool:
@@ -214,3 +229,152 @@ def _build_identity_plan(expression: str) -> tuple[list[str], str]:
     if steps[-1] != final_display:
         steps.append(final_display)
     return steps, final_display
+
+
+def _eq_display(lhs: Expr, rhs: Expr) -> str:
+    return f"{_display(lhs)}={_display(rhs)}"
+
+
+def _equation_variable(lhs: Expr, rhs: Expr) -> Symbol:
+    symbols = sorted((lhs - rhs).free_symbols, key=lambda symbol: str(symbol).lower())
+    if len(symbols) != 1:
+        raise UnsupportedProblemError("Trig equations must have exactly one unknown.")
+    symbol = symbols[0]
+    if not isinstance(symbol, Symbol):
+        raise UnsupportedProblemError("Trig equations must solve for a single variable.")
+    return symbol
+
+
+def _contains_trig_of_var(expr: Expr, var: Symbol) -> bool:
+    for node in preorder_traversal(expr):
+        if _is_trig_call(node) and node.args and node.args[0] == var:
+            return True
+    return False
+
+
+def _split_coeff_trig(expr: Expr, var: Symbol) -> tuple[Expr, Expr] | None:
+    if _is_trig_call(expr) and expr.args[0] == var:
+        return S.One, expr
+    if isinstance(expr, Mul):
+        coeff = S.One
+        trig: Expr | None = None
+        for arg in expr.args:
+            if _is_trig_call(arg) and arg.args[0] == var:
+                if trig is not None:
+                    return None
+                trig = arg
+            elif not arg.free_symbols:
+                coeff *= arg
+            else:
+                return None
+        if trig is not None:
+            return simplify(coeff), trig
+    return None
+
+
+def _isolate_trig_equation_steps(
+    lhs: Expr,
+    rhs: Expr,
+    var: Symbol,
+) -> list[tuple[Expr, Expr]]:
+    steps: list[tuple[Expr, Expr]] = []
+    working_lhs, working_rhs = expand(lhs), expand(rhs)
+
+    balanced = _try_balance_opposing_trig_terms(working_lhs, working_rhs, var)
+    if balanced is not None:
+        steps.append(balanced)
+        return steps
+
+    if isinstance(working_lhs, Add) and _contains_trig_of_var(working_lhs, var):
+        const_part = S.Zero
+        trig_coeff: Expr | None = None
+        trig_call: Expr | None = None
+        for term in working_lhs.args:
+            split = _split_coeff_trig(term, var)
+            if split is not None:
+                coeff, trig = split
+                if trig_call is not None:
+                    raise UnsupportedProblemError(
+                        "Trig equations with multiple trig terms are not supported."
+                    )
+                trig_coeff = coeff
+                trig_call = trig
+            else:
+                const_part += term
+        if trig_call is not None and const_part != S.Zero:
+            working_lhs = trig_coeff * trig_call  # type: ignore[operator]
+            working_rhs = simplify(working_rhs - const_part)
+            steps.append((working_lhs, working_rhs))
+            lhs, rhs = working_lhs, working_rhs
+
+    split = _split_coeff_trig(lhs, var)
+    if split is not None:
+        coeff, trig = split
+        if coeff != S.One:
+            isolated_rhs = simplify(rhs / coeff)
+            steps.append((trig, isolated_rhs))
+    return steps
+
+
+def _try_balance_opposing_trig_terms(
+    lhs: Expr,
+    rhs: Expr,
+    var: Symbol,
+) -> tuple[Expr, Expr] | None:
+    if rhs != S.Zero or not isinstance(lhs, Add):
+        return None
+
+    trig_terms: list[Expr] = []
+    const_part = S.Zero
+    for term in lhs.args:
+        if _contains_trig_of_var(term, var):
+            trig_terms.append(term)
+        else:
+            const_part += term
+    if const_part != S.Zero or len(trig_terms) != 2:
+        return None
+
+    left_trig, right_trig = trig_terms[0], -trig_terms[1]
+    return left_trig, right_trig
+
+
+def _solution_sort_key(solution: Expr) -> float:
+    from sympy import N
+
+    try:
+        return float(N(simplify(solution)))
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def _format_variable_solutions(var: Symbol, solutions: list[Expr]) -> str:
+    var_name = str(var)
+    ordered = sorted(solutions, key=_solution_sort_key)
+    rendered = [f"{var_name}={_display(simplify(solution))}" for solution in ordered]
+    return ",".join(rendered)
+
+
+def _build_trig_equation_plan(expression: str) -> tuple[list[str], str]:
+    lhs_text, rhs_text = expression.split("=", 1)
+    if not lhs_text.strip() or not rhs_text.strip():
+        raise UnsupportedProblemError("Trig equations require both sides around =.")
+
+    lhs = _parse_trig_sympy(lhs_text, evaluate=False)
+    rhs = _parse_trig_sympy(rhs_text, evaluate=False)
+    var = _equation_variable(lhs, rhs)
+
+    steps = [_eq_display(lhs, rhs)]
+    for iso_lhs, iso_rhs in _isolate_trig_equation_steps(lhs, rhs, var):
+        iso_step = _eq_display(iso_lhs, iso_rhs)
+        if iso_step != steps[-1]:
+            steps.append(iso_step)
+        lhs, rhs = iso_lhs, iso_rhs
+
+    solutions = solve(Eq(lhs, rhs), var)
+    if not solutions:
+        raise UnsupportedProblemError("No solution found for this trig equation.")
+
+    final = _format_variable_solutions(var, solutions)
+    if steps[-1] != final:
+        steps.append(final)
+    return steps, final

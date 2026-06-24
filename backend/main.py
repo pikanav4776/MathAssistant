@@ -50,7 +50,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as OrmSession 
 from pydantic import BaseModel
 from sympy import (
-    Add, E, Mod, Mul, Pow,
+    Add, E, Eq, Mod, Mul, Pow,
     cos, expand, collect, simplify, sin, sympify, sqrt, tan,
     zoo, nan, oo, pi as Pi,
 )
@@ -67,7 +67,7 @@ from session_access import assert_session_access
 from session_detail import step_index_for_session
 from session_routes import router as session_router
 from db.models import Attempt, Problem, SolutionPath, SolutionStep, TutoringSession, User, UserRole
-from expression_preprocess import preprocess_for_sympy, contains_text_like_input
+from expression_preprocess import preprocess_for_sympy, contains_text_like_input, display_expression
 from calculator_answer import CalculatorAnswerError, compute_calculator_answer
 from step_engine import (
     UnsupportedProblemError,
@@ -416,7 +416,33 @@ def _scan_text_for_input_issues(expression: str) -> None:
             raise UndefinedMathError(detail, user_message=UndefinedMathError.user_message)
 
 
+def _try_parse_simple_equation(cleaned: str) -> Expr | None:
+    if any(op in cleaned for op in ("<=", ">=", "==", "!=", "<", ">")):
+        return None
+    if cleaned.count("=") != 1:
+        return None
+    lhs_text, rhs_text = cleaned.split("=", 1)
+    if not lhs_text or not rhs_text:
+        return None
+    lhs = sympify(lhs_text, locals=_SYMPY_LOCALS)
+    rhs = sympify(rhs_text, locals=_SYMPY_LOCALS)
+    return Eq(lhs, rhs)
+
+
+def _parse_solution_set(text: str) -> frozenset[str] | None:
+    compact = re.sub(r"\s+", "", text.strip())
+    if "," not in compact or "=" not in compact:
+        return None
+    parts = compact.split(",")
+    if not all(re.match(r"[A-Za-z]+=.+", part) for part in parts):
+        return None
+    return frozenset(display_expression(part) for part in parts)
+
+
 def _sympify_safe(cleaned: str, original: str) -> Expr: #This function is used to safely convert a string to a SymPy expression.
+    equation = _try_parse_simple_equation(cleaned)
+    if equation is not None:
+        return equation
     try:
         return sympify(cleaned, locals=_SYMPY_LOCALS)
     except SympifyError as exc:
@@ -634,6 +660,24 @@ class StepValidator:
         }
 
     def comparison(self, student_str: str, expected_str: str) -> dict:
+        student_set = _parse_solution_set(student_str)
+        expected_set = _parse_solution_set(expected_str)
+        if student_set is not None and expected_set is not None:
+            is_equivalent = student_set == expected_set
+            return {
+                "is_equivalent": is_equivalent,
+                "structural_diff": {
+                    "top_level_op": {
+                        "student": "SolutionSet",
+                        "expected": "SolutionSet",
+                        "match": is_equivalent,
+                    },
+                    "term_diff": {"missing_terms": [], "extra_terms": []},
+                    "coeff_diff": {},
+                    "same_monomial_basis": is_equivalent,
+                },
+            }
+
         student_parsed = self.parser(student_str)
         expected_parsed = self.parser(expected_str)
         student_parsed = _align_student_symbols_to_reference(student_parsed, expected_parsed)
